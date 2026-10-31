@@ -58,6 +58,7 @@ mark{background:var(--hl);color:inherit;border-radius:3px;padding:0 1px}
  <label>Drive上の索引フォルダ名</label><input id="s_fold" type="text">
  <label>Drive上の資料フォルダ名（院内資料 / 参考書）</label><div class="row"><input id="s_rh" type="text" style="flex:1"><input id="s_rb" type="text" style="flex:1"></div>
  <label><input type="checkbox" id="s_fake"> テスト用（意味検索にダミーを使う）</label>
+  <label>保存済みの本（この端末。次回からDriveを使わず即開けます）</label><div id="s_saved"></div>
  <label>Google Cloudに登録する「リダイレクトURI」はこれです:</label><div id="s_redir" style="font-size:12px;word-break:break-all;user-select:all"></div>
  <div class="row" style="margin-top:14px"><button id="s_save">保存</button><button class="sub" id="s_close">閉じる</button></div>
 </div></div>
@@ -65,6 +66,6 @@ mark{background:var(--hl);color:inherit;border-radius:3px;padding:0 1px}
 <div id="viewer"><div id="vbar">
  <button class="sub" id="vclose">閉じる</button><div id="vtitle"></div>
  <button class="sub" id="vprev">◀</button><input id="vpage" type="number" min="1"><span id="vstat" style="font-size:12px;color:var(--mu)"></span><button class="sub" id="vnext">▶</button>
- <button class="sub" id="vzout">－</button><button class="sub" id="vzin">＋</button><button class="sub" id="vdrive">Driveで開く</button>
+ <button class="sub" id="vzout">－</button><button class="sub" id="vzin">＋</button><button class="sub" id="vsave">📥 保存</button><button class="sub" id="vdrive">Driveで開く</button>
 </div><div id="vbody"><div id="vpages"></div></div></div>
 <script src="app.js"></script></body></html>

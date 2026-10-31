@@ -127,6 +127,40 @@ async function downloadBuf(id, onProg) {
   const out = new Uint8Array(got); let o = 0; for (const p of parts) { out.set(p, o); o += p.length; }
   return out.buffer;
 }
+async function downloadBlob(id, onProg) {   // 大きいPDF用: 連結せずBlobのまま保持（メモリを節約）
+  const t = await needToken();
+  const r = await fetch(API + "files/" + id + "?alt=media", { headers: { Authorization: "Bearer " + t } });
+  if (!r.ok) throw new Error("ダウンロード失敗 " + r.status);
+  const total = +r.headers.get("content-length") || 0; const rd = r.body.getReader(); const parts = []; let got = 0;
+  for (;;) { const { done, value } = await rd.read(); if (done) break; parts.push(value); got += value.length; if (onProg) onProg(got, total); }
+  return new Blob(parts, { type: "application/pdf" });
+}
+/* ---------- オフライン保存（よく使う本をこの端末に保存して、Driveを使わず即開く） ---------- */
+const SAVED = new Map();
+async function loadSaved() { SAVED.clear(); try { for (const k of await idbKeys("kv")) if (typeof k === "string" && k.startsWith("offm:")) { const m = await idbGet("kv", k); if (m) SAVED.set(m.rel, m); } } catch (e) {} }
+async function savePdf(f, onProg) {
+  const id = await resolveDriveId(f); const blob = await downloadBlob(id, onProg);
+  if (navigator.storage && navigator.storage.persist) { try { await navigator.storage.persist(); } catch (e) {} }
+  await idbPut("kv", "offd:" + f.rel, blob);
+  const m = { rel: f.rel, id, name: f.name, size: blob.size, t: Date.now() }; await idbPut("kv", "offm:" + f.rel, m); SAVED.set(f.rel, m);
+}
+async function unsavePdf(rel) { await idbDel("kv", "offd:" + rel); await idbDel("kv", "offm:" + rel); SAVED.delete(rel); }
+const saveLabel = f => SAVED.has(f.rel) ? "✅ 保存済み" : "📥 保存";
+async function toggleSave(f, btn) {
+  if (SAVED.has(f.rel)) { if (!confirm("この端末に保存した「" + f.name + "」を削除しますか？（Driveの元ファイルは消えません）")) return; await unsavePdf(f.rel); btn.textContent = saveLabel(f); return; }
+  btn.disabled = true;
+  try { await savePdf(f, (g, t) => { btn.textContent = "保存中 " + Math.round(g / 1e6) + (t ? "/" + Math.round(t / 1e6) : "") + "MB"; }); setStat("保存しました: " + f.name); }
+  catch (e) { setStat("保存できません: " + (e && e.name === "QuotaExceededError" ? "端末の空き容量が足りません" : (e && e.message) || e)); }
+  btn.disabled = false; btn.textContent = saveLabel(f);
+}
+async function renderSaved() {
+  const box = $("s_saved"); box.innerHTML = ""; const L = [...SAVED.values()].sort((a, b) => b.t - a.t); let tot = 0;
+  L.forEach(m => { tot += m.size; const r = document.createElement("div"); r.className = "row"; r.style.cssText = "justify-content:space-between;font-size:13px;margin:4px 0";
+    const sp = document.createElement("span"); sp.style.cssText = "flex:1;word-break:break-all"; sp.textContent = m.name + "（" + Math.round(m.size / 1e6) + "MB）";
+    const b = document.createElement("button"); b.className = "sub"; b.textContent = "削除"; b.onclick = async () => { await unsavePdf(m.rel); renderSaved(); }; r.append(sp, b); box.appendChild(r); });
+  let est = ""; try { const e = await navigator.storage.estimate(); est = "　端末の使用量 " + Math.round(e.usage / 1e6) + "MB（上限の目安 " + (Math.round(e.quota / 1e8) / 10) + "GB）"; } catch (e) {}
+  const h = document.createElement("div"); h.style.cssText = "font-size:12px;color:var(--mu)"; h.textContent = (L.length ? "保存済み " + L.length + "冊・合計 " + Math.round(tot / 1e6) + "MB" : "まだ保存した本はありません（検索結果の「📥 保存」で保存できます）") + est; box.prepend(h);
+}
 const pathCache = new Map();
 async function resolveDriveId(f) {
   const key = f.rel; if (pathCache.has(key)) return pathCache.get(key);
@@ -311,7 +345,8 @@ async function run() {
     const ac = document.createElement("div"); ac.className = "act";
     const o1 = document.createElement("button"); o1.textContent = "開く"; o1.onclick = () => openFile(x.file, x.page);
     const o2 = document.createElement("button"); o2.className = "sub"; o2.textContent = "Driveで開く"; o2.onclick = () => openInDrive(x.file);
-    ac.append(o1, o2); c.append(rk, coverEl(x.file, () => openFile(x.file, x.page)), m, ac); box.appendChild(c);
+    ac.append(o1, o2); if (x.file.ext === "pdf") { const o3 = document.createElement("button"); o3.className = "sub"; o3.textContent = saveLabel(x.file); o3.onclick = () => toggleSave(x.file, o3); ac.append(o3); }
+    c.append(rk, coverEl(x.file, () => openFile(x.file, x.page)), m, ac); box.appendChild(c);
   });
 }
 
@@ -333,10 +368,23 @@ let PDFLIB = null, CUR = null;
 function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = () => rej(new Error("pdf.jsを読み込めません（ネット接続を確認）")); document.head.appendChild(s); }); }
 async function openFile(f, page) {
   const resume = { q: $("q").value, open: { rel: f.rel, page } };
+  const sv = f.ext === "pdf" && SAVED.get(f.rel);
+  if (sv) {   // この端末に保存済み: ログインもDriveも使わず開く
+    try {
+      const blob = await idbGet("kv", "offd:" + f.rel);
+      if (blob) {
+        $("viewer").style.display = "flex"; $("vtitle").textContent = f.name; $("vstat").textContent = "読み込み中…"; $("vsave").textContent = saveLabel(f);
+        if (!window.pdfjsLib) await loadScript(PDFJS); pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
+        const doc = await pdfjsLib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) }).promise;
+        if (CUR && CUR.io) CUR.io.disconnect();
+        CUR = { doc, f, id: sv.id, zoom: 1 }; await buildPages(Math.min(Math.max(page || 1, 1), doc.numPages)); return;
+      }
+    } catch (e) { $("viewer").style.display = "none"; setStat("保存データを開けませんでした。Driveから開きます: " + e.message); }
+  }
   try {
     await needToken(resume); const id = await resolveDriveId(f);
     if (f.ext !== "pdf") { window.open("https://drive.google.com/file/d/" + id + "/view", "_blank"); return; }
-    $("viewer").style.display = "flex"; $("vtitle").textContent = f.name; $("vstat").textContent = "読み込み中…";
+    $("viewer").style.display = "flex"; $("vtitle").textContent = f.name; $("vstat").textContent = "読み込み中…"; $("vsave").textContent = saveLabel(f);
     if (!window.pdfjsLib) { await loadScript(PDFJS); }
     pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
     const tok = getToken(); const url = API + "files/" + id + "?alt=media"; let doc;
@@ -398,7 +446,7 @@ function setZoom(z) { if (!CUR) return; const n = CUR.n; CUR.zoom = z; buildPage
 /* ---------- 設定 ---------- */
 function openSettings() {
   $("s_cid").value = CFG.clientId; $("s_key").value = CFG.geminiKey; $("s_fold").value = CFG.indexFolder; $("s_rh").value = CFG.rootHosp; $("s_rb").value = CFG.rootBook; $("s_fake").checked = CFG.fake;
-  $("s_redir").textContent = redirectUri(); $("settings").style.display = "block";
+  $("s_redir").textContent = redirectUri(); $("settings").style.display = "block"; renderSaved();
 }
 function bind() {
   $("go").onclick = run; $("q").addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) run(); });
@@ -415,6 +463,7 @@ function bind() {
   $("vpage").onchange = () => CUR && goPage(+$("vpage").value || 1);
   $("vzin").onclick = () => CUR && setZoom(Math.min((CUR.zoom || 1) * 1.25, 4));
   $("vzout").onclick = () => CUR && setZoom(Math.max((CUR.zoom || 1) / 1.25, 0.5));
+  $("vsave").onclick = () => CUR && toggleSave(CUR.f, $("vsave"));
   $("vdrive").onclick = () => CUR && window.open("https://drive.google.com/file/d/" + CUR.id + "/view", "_blank");
 }
 function afterLoad() {
@@ -423,7 +472,7 @@ function afterLoad() {
   fillT1(); setStat("");
 }
 async function boot() {
-  bind(); if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+  bind(); await loadSaved(); if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
   const ar = handleAuthReturn(); let resume = null;
   try { resume = JSON.parse(sessionStorage.getItem("hs_resume") || "null"); sessionStorage.removeItem("hs_resume"); } catch (e) {}
   if (ar && ar !== "ok") { if (ar === "login_required" || ar === "interaction_required" || ar === "consent_required") { try { localStorage.removeItem("hs_tried"); } catch (e) {} setStat("Googleへのログインが必要です。「索引を更新」か「開く」を押してください。"); } else setStat("ログインに失敗しました: " + ar); }
