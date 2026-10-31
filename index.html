@@ -19,6 +19,7 @@ button.sub{background:transparent;color:var(--ac);border:1px solid var(--bd);pad
 .filters{margin:10px 0;color:var(--mu);font-size:13px}.filters select{font-size:14px;padding:8px}.filters label{display:flex;gap:5px;align-items:center}
 #stat{font-size:12px;color:var(--mu);margin:6px 0 12px;min-height:16px}
 .card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:13px 15px;margin:10px 0;display:flex;gap:12px}
+.cv{width:62px;height:auto;align-self:flex-start;border:1px solid var(--bd);border-radius:4px;background:#fff;flex:none}.cv0{width:62px;height:82px;align-self:flex-start;border:1px dashed var(--bd);border-radius:4px;color:var(--mu);font-size:11px;display:flex;align-items:center;justify-content:center;flex:none}
 .rk{min-width:22px;color:var(--mu);font-weight:600;padding-top:2px}
 .main{flex:1;min-width:0}.title{font-weight:600;font-size:15px;word-break:break-all}
 .meta{font-size:12px;color:var(--mu);margin:2px 0 6px;word-break:break-all}
@@ -41,7 +42,7 @@ mark{background:var(--hl);color:inherit;border-radius:3px;padding:0 1px}
 <h1>院内資料検索<small id="info"></small><span style="flex:1"></span><button class="sub" id="syncbtn">索引を更新</button><button class="sub" id="setbtn">設定</button></h1>
 <div class="row"><input id="q" type="text" placeholder="例：急性膵炎の治療　/　膵炎 経腸栄養 いつから" autofocus><button id="go">検索</button></div>
 <div class="row filters">
- <select id="src"><option value="">院内資料 ＋ 参考書</option><option value="院内資料">院内資料のみ</option><option value="参考書">参考書のみ</option></select>
+ <select id="src"><option value="">すべて</option><option value="院内資料">院内資料</option><option value="レジデントノート">レジデントノート</option><option value="参考書">参考書</option></select>
  <select id="t1"><option value="">すべての分類</option></select>
  <select id="t2"><option value="">すべての科/種別</option></select>
  <select id="ext"><option value="">全形式</option><option value="pdf">PDF</option><option value="pptx">PowerPoint</option><option value="docx">Word</option><option value="xlsx">Excel</option></select>

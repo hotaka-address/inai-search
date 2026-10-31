@@ -5,7 +5,8 @@ const CUR_YEAR = new Date().getFullYear();
 const SCOPE = "https://www.googleapis.com/auth/drive.readonly";
 const PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
 const PDFJS_WORKER = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-const SRC_HOSP = "院内資料", SRC_BOOK = "参考書";
+const SRC_HOSP = "院内資料", SRC_BOOK = "参考書", GRP_RN = "レジデントノート";
+const grpOf = (f) => (f.src === SRC_BOOK && f.top1 === GRP_RN) ? GRP_RN : f.src;   // 区分: 院内資料 / レジデントノート / 参考書
 
 /* ---------- 設定 ---------- */
 const DEF = { clientId: "", geminiKey: "", indexFolder: "院内検索_iPad索引", rootHosp: "St Lukes", rootBook: "参考書", fake: false };
@@ -152,10 +153,11 @@ async function syncIndex() {
   const need = [];
   for (const s of man.shards) need.push(s.c, s.v);
   need.push(man.bm25.terms, man.bm25.post, man.bm25.dl);
+  if (man.covers) need.push(man.covers);
   const have = new Set(await idbKeys("blobs")); let total = 0;
   const todo = [];
   for (const n of need) {
-    const d = byName.get(n); if (!d) throw new Error("Driveに " + n + " がありません（同期が終わっていない可能性）");
+    const d = byName.get(n); if (!d) { if (n === man.covers) continue; throw new Error("Driveに " + n + " がありません（同期が終わっていない可能性）"); }   // 表紙は無くても動く
     const h = have.has(n) ? await idbGet("blobs", n) : null;
     if (!h || h.md5 !== d.md5Checksum) { todo.push(d); total += +d.size || 0; }
   }
@@ -188,11 +190,12 @@ async function loadIndex() {
     S.set(new Float32Array(b.data.slice(sh.n * dim, sh.n * dim + sh.n * 4)), sh.start);
   }
   const fid = new Int32Array(N); let p = 0;
-  man.files.forEach((f, i) => { fid.fill(i, p, p + f.n); p += f.n; f.ptxt = norm(f.path.replace(/\.[^./]+$/, "")); });
+  man.files.forEach((f, i) => { fid.fill(i, p, p + f.n); p += f.n; f.ptxt = norm(f.path.replace(/\.[^./]+$/, "")); f.grp = grpOf(f); });
   const tb = await idbGet("blobs", man.bm25.terms), pb = await idbGet("blobs", man.bm25.post), db = await idbGet("blobs", man.bm25.dl);
   if (!tb || !pb || !db) return false;
   const terms = JSON.parse(await gunzipText(tb.data)); Object.setPrototypeOf(terms, null);
-  IX = { man, dim, N, Q, S, fid, files: man.files, terms, post: new Uint8Array(pb.data), dl: new Uint16Array(db.data), avg: man.bm25.avg, lru: new Map() };
+  const cb = man.covers ? await idbGet("blobs", man.covers) : null;
+  IX = { cov: cb ? cb.data : null, covUrl: new Map(), man, dim, N, Q, S, fid, files: man.files, terms, post: new Uint8Array(pb.data), dl: new Uint16Array(db.data), avg: man.bm25.avg, lru: new Map() };
   return true;
 }
 async function shardChunks(si) {
@@ -242,7 +245,7 @@ function snippet(text, q, w = 170) {
 async function search(q, f) {
   const t0 = performance.now(); const files = IX.files, N = IX.N;
   const fm = new Uint8Array(files.length);
-  files.forEach((x, i) => { fm[i] = (!f.src || x.src === f.src) && (!f.top1 || (x.top1 || "(直下)") === f.top1) && (!f.top2 || (x.top2 || "(直下)") === f.top2) && (!f.ext || x.ext === f.ext) && (x.src === SRC_BOOK || x.year >= (f.year || 0)) ? 1 : 0; });
+  files.forEach((x, i) => { fm[i] = (!f.src || x.grp === f.src) && (!f.top1 || (x.top1 || "(直下)") === f.top1) && (!f.top2 || (x.top2 || "(直下)") === f.top2) && (!f.ext || x.ext === f.ext) && (x.src === SRC_BOOK || x.year >= (f.year || 0)) ? 1 : 0; });
   const mask = new Uint8Array(N); for (let i = 0; i < N; i++) mask[i] = fm[IX.fid[i]];
   const qn = norm(q), qg = [...new Set(grams(q))];
   const sb = bm25(q, mask); const cand = new Map(); const K = 60, M = 300;
@@ -283,7 +286,7 @@ function hl(el, text, terms) {
   text.split(re).forEach((p, i) => { if (i % 2) { const m = document.createElement("mark"); m.textContent = p; el.appendChild(m); } else el.appendChild(document.createTextNode(p)); });
 }
 function tree() {
-  const s = $("src").value, m = {}; IX.files.forEach(f => { if (s && f.src !== s) return; const a = f.top1 || "(直下)", b = f.top2 || "(直下)"; m[a] = m[a] || {}; m[a][b] = (m[a][b] || 0) + 1; }); return m;
+  const s = $("src").value, m = {}; IX.files.forEach(f => { if (s && f.grp !== s) return; const a = f.top1 || "(直下)", b = f.top2 || "(直下)"; m[a] = m[a] || {}; m[a][b] = (m[a][b] || 0) + 1; }); return m;
 }
 function fillT1() { const t = $("t1"); t.innerHTML = '<option value="">すべての分類</option>'; Object.keys(tree()).sort().forEach(k => { const o = document.createElement("option"); o.value = o.textContent = k; t.appendChild(o); }); $("t2").innerHTML = '<option value="">すべての科/種別</option>'; }
 function filters() { return { src: $("src").value, top1: $("t1").value, top2: $("t2").value, ext: $("ext").value, year: +$("yf").value, prefNew: $("pn").checked }; }
@@ -298,7 +301,7 @@ async function run() {
     const m = document.createElement("div"); m.className = "main";
     const t = document.createElement("div"); t.className = "title"; t.textContent = x.file.name;
     const me = document.createElement("div"); me.className = "meta"; const folder = x.file.path.split("/").slice(0, -1).join("/");
-    me.textContent = (x.file.src === SRC_BOOK ? "📚 参考書 ・ " : "") + (folder || (x.file.src === SRC_BOOK ? "参考書" : "")) + (x.file.src === SRC_BOOK ? "" : " ・ " + x.file.year + "年頃");
+    me.textContent = (x.file.src === SRC_BOOK ? (x.file.grp === GRP_RN ? "📓 " : "📚 参考書 ・ ") : "") + (folder || (x.file.src === SRC_BOOK ? "参考書" : "")) + (x.file.src === SRC_BOOK ? "" : " ・ " + x.file.year + "年頃");
     const sn = document.createElement("div"); sn.className = "snip"; hl(sn, x.snip, r.terms);
     const ch = document.createElement("div"); ch.className = "chips";
     const b = document.createElement("span"); b.className = "chip best"; b.textContent = "最有力: " + x.loc; ch.appendChild(b);
@@ -308,8 +311,18 @@ async function run() {
     const ac = document.createElement("div"); ac.className = "act";
     const o1 = document.createElement("button"); o1.textContent = "開く"; o1.onclick = () => openFile(x.file, x.page);
     const o2 = document.createElement("button"); o2.className = "sub"; o2.textContent = "Driveで開く"; o2.onclick = () => openInDrive(x.file);
-    ac.append(o1, o2); c.append(rk, m, ac); box.appendChild(c);
+    ac.append(o1, o2); c.append(rk, coverEl(x.file, () => openFile(x.file, x.page)), m, ac); box.appendChild(c);
   });
+}
+
+/* ---------- 表紙 ---------- */
+function coverEl(f, onclick) {
+  let u = IX.covUrl.get(f.rel);
+  if (!u && f.cv && IX.cov) { u = URL.createObjectURL(new Blob([new Uint8Array(IX.cov, f.cv[0], f.cv[1])], { type: "image/jpeg" })); IX.covUrl.set(f.rel, u); }
+  let e;
+  if (u) { e = document.createElement("img"); e.className = "cv"; e.src = u; e.alt = ""; e.loading = "lazy"; }
+  else { e = document.createElement("div"); e.className = "cv0"; e.textContent = f.ext.toUpperCase(); }
+  e.onclick = onclick; return e;
 }
 
 /* ---------- ファイルを開く ---------- */
@@ -365,8 +378,8 @@ function bind() {
   $("vdrive").onclick = () => CUR && window.open("https://drive.google.com/file/d/" + CUR.id + "/view", "_blank");
 }
 function afterLoad() {
-  const c = {}; IX.files.forEach(f => c[f.src] = (c[f.src] || 0) + 1);
-  $("info").textContent = "院内 " + (c[SRC_HOSP] || 0) + " ／ 参考書 " + (c[SRC_BOOK] || 0) + " ファイル・" + IX.N + "箇所";
+  const c = {}; IX.files.forEach(f => c[f.grp] = (c[f.grp] || 0) + 1);
+  $("info").textContent = "院内 " + (c[SRC_HOSP] || 0) + " ／ レジデントノート " + (c[GRP_RN] || 0) + " ／ 参考書 " + (c[SRC_BOOK] || 0) + " ファイル・" + IX.N + "箇所";
   fillT1(); setStat("");
 }
 async function boot() {
