@@ -346,16 +346,54 @@ async function openFile(f, page) {
       if (!data) { data = await downloadBuf(id, (g, t) => { $("vstat").textContent = "ダウンロード中 " + Math.round(g / 1e6) + (t ? " / " + Math.round(t / 1e6) : "") + " MB"; }); try { await idbPut("kv", key, data); } catch (e2) {} }
       doc = await pdfjsLib.getDocument({ data: data.slice(0) }).promise;
     }
-    CUR = { doc, f, id }; await showPage(Math.min(Math.max(page || 1, 1), doc.numPages));
+    if (CUR && CUR.io) CUR.io.disconnect();
+    CUR = { doc, f, id, zoom: 1 }; await buildPages(Math.min(Math.max(page || 1, 1), doc.numPages));
   } catch (e) { $("vstat").textContent = "開けません: " + e.message; setStat("開けません: " + e.message); }
 }
-async function showPage(n) {
-  CUR.n = n; const page = await CUR.doc.getPage(n); const box = $("vbody"); const w = box.clientWidth - 8;
-  const vp1 = page.getViewport({ scale: 1 }); const scale = (w / vp1.width) * (CUR.zoom || 1); const vp = page.getViewport({ scale: scale * (window.devicePixelRatio || 1) });
-  const cv = $("vcanvas"); cv.width = vp.width; cv.height = vp.height; cv.style.width = vp.width / (window.devicePixelRatio || 1) + "px";
-  await page.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise;
-  $("vpage").value = n; $("vstat").textContent = n + " / " + CUR.doc.numPages; box.scrollTop = 0;
+/* 連続スクロール表示: 全ページ分の枠を作り、画面の近くのページだけ描画する */
+async function buildPages(n) {
+  const box = $("vbody"), wrap = $("vpages"), doc = CUR.doc; wrap.innerHTML = "";
+  const p1 = await doc.getPage(1), v1 = p1.getViewport({ scale: 1 });
+  const cssW = Math.max(120, (box.clientWidth - 8) * (CUR.zoom || 1)); CUR.cssW = cssW;
+  const h0 = Math.round(cssW * v1.height / v1.width); CUR.pgs = [];
+  const fr = document.createDocumentFragment();
+  for (let i = 1; i <= doc.numPages; i++) { const d = document.createElement("div"); d.className = "pg"; d.dataset.n = i; d.style.width = cssW + "px"; d.style.height = h0 + "px"; fr.appendChild(d); CUR.pgs.push(d); }
+  wrap.appendChild(fr);
+  if (CUR.io) CUR.io.disconnect();
+  CUR.io = new IntersectionObserver(es => es.forEach(e => e.isIntersecting ? renderPg(e.target) : releasePg(e.target)), { root: box, rootMargin: "1400px 0px" });
+  CUR.pgs.forEach(d => CUR.io.observe(d));
+  goPage(n);
 }
+async function renderPg(d) {
+  if (d._r || !CUR) return; d._r = 1; const tok = d._tok = (d._tok || 0) + 1, cur = CUR;
+  try {
+    const page = await cur.doc.getPage(+d.dataset.n); if (CUR !== cur || d._tok !== tok) return;
+    const sc = cur.cssW / page.getViewport({ scale: 1 }).width, dpr = Math.min(window.devicePixelRatio || 1, 2), vp = page.getViewport({ scale: sc * dpr });
+    const cv = document.createElement("canvas"); cv.width = Math.floor(vp.width); cv.height = Math.floor(vp.height);
+    await page.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise; if (CUR !== cur || d._tok !== tok) return;
+    d.style.height = Math.round(vp.height / dpr) + "px"; d.replaceChildren(cv);
+    if (cur.align && +d.dataset.n <= cur.align) realign();
+  } catch (e) { d._r = 0; }
+}
+function releasePg(d) { if (!d._r) return; d._tok = (d._tok || 0) + 1; d._r = 0; const c = d.firstChild; if (c) { c.width = c.height = 0; } d.replaceChildren(); }
+function realign() { if (!CUR || !CUR.align) return; const d = CUR.pgs[CUR.align - 1], box = $("vbody"); if (d && Math.abs(box.scrollTop - d.offsetTop) > 2) { CUR.setting = 1; box.scrollTop = d.offsetTop; } }
+function goPage(n) {
+  if (!CUR) return; n = Math.min(Math.max(n, 1), CUR.doc.numPages); CUR.n = n; CUR.align = n;
+  const box = $("vbody"); CUR.setting = 1; box.scrollTop = CUR.pgs[n - 1].offsetTop; showPos();
+  setTimeout(realign, 500); setTimeout(realign, 1500); setTimeout(() => { if (CUR && CUR.align === n) CUR.align = 0; }, 2500);
+}
+function curPageFromScroll() {
+  const box = $("vbody"), y = box.scrollTop + box.clientHeight * 0.3, P = CUR.pgs; let lo = 0, hi = P.length - 1;
+  while (lo < hi) { const m = (lo + hi + 1) >> 1; if (P[m].offsetTop <= y) lo = m; else hi = m - 1; } return lo + 1;
+}
+function showPos() { $("vpage").value = CUR.n; $("vstat").textContent = CUR.n + " / " + CUR.doc.numPages; }
+let scrollT = 0;
+function onVScroll() {
+  if (!CUR || !CUR.pgs) return; if (CUR.setting) { CUR.setting = 0; return; }
+  if (CUR.align) CUR.align = 0;   // 利用者が動かしたら、自動の位置合わせはやめる
+  if (scrollT) return; scrollT = requestAnimationFrame(() => { scrollT = 0; if (CUR && CUR.pgs) { CUR.n = curPageFromScroll(); showPos(); } });
+}
+function setZoom(z) { if (!CUR) return; const n = CUR.n; CUR.zoom = z; buildPages(n); }
 
 /* ---------- 設定 ---------- */
 function openSettings() {
@@ -370,11 +408,13 @@ function bind() {
   $("setbtn").onclick = openSettings; $("s_close").onclick = () => { $("settings").style.display = "none"; };
   $("s_save").onclick = () => { CFG.clientId = $("s_cid").value.trim(); CFG.geminiKey = $("s_key").value.trim(); CFG.indexFolder = $("s_fold").value.trim() || DEF.indexFolder; CFG.rootHosp = $("s_rh").value.trim() || DEF.rootHosp; CFG.rootBook = $("s_rb").value.trim() || DEF.rootBook; CFG.fake = $("s_fake").checked; saveCfg(); $("settings").style.display = "none"; setStat("設定を保存しました"); };
   $("syncbtn").onclick = async () => { try { if (await syncIndex()) { if (await loadIndex()) afterLoad(); } } catch (e) { setStat("取り込み失敗: " + e.message); } };
-  $("vclose").onclick = () => { $("viewer").style.display = "none"; CUR = null; };
-  $("vprev").onclick = () => CUR && CUR.n > 1 && showPage(CUR.n - 1); $("vnext").onclick = () => CUR && CUR.n < CUR.doc.numPages && showPage(CUR.n + 1);
-  $("vpage").onchange = () => CUR && showPage(Math.min(Math.max(+$("vpage").value || 1, 1), CUR.doc.numPages));
-  $("vzin").onclick = () => { if (CUR) { CUR.zoom = Math.min((CUR.zoom || 1) * 1.25, 4); showPage(CUR.n); } };
-  $("vzout").onclick = () => { if (CUR) { CUR.zoom = Math.max((CUR.zoom || 1) / 1.25, 0.5); showPage(CUR.n); } };
+  $("vclose").onclick = () => { $("viewer").style.display = "none"; if (CUR && CUR.io) CUR.io.disconnect(); $("vpages").innerHTML = ""; CUR = null; };
+  $("vprev").onclick = () => CUR && goPage(CUR.n - 1); $("vnext").onclick = () => CUR && goPage(CUR.n + 1);
+  $("vbody").addEventListener("scroll", onVScroll, { passive: true }); $("vbody").addEventListener("touchstart", () => { if (CUR) CUR.align = 0; }, { passive: true });
+  let rz = 0; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { if (CUR && CUR.pgs && $("viewer").style.display !== "none") buildPages(CUR.n); }, 400); });
+  $("vpage").onchange = () => CUR && goPage(+$("vpage").value || 1);
+  $("vzin").onclick = () => CUR && setZoom(Math.min((CUR.zoom || 1) * 1.25, 4));
+  $("vzout").onclick = () => CUR && setZoom(Math.max((CUR.zoom || 1) / 1.25, 0.5));
   $("vdrive").onclick = () => CUR && window.open("https://drive.google.com/file/d/" + CUR.id + "/view", "_blank");
 }
 function afterLoad() {
