@@ -10,7 +10,7 @@ const SRC_HOSP = "院内資料", SRC_BOOK = "参考書", GRP_RN = "レジデン�
 const grpOf = (f) => (f.src === SRC_BOOK && f.top1 === GRP_RN) ? GRP_RN : f.src;   // 区分: 院内資料 / レジデントノート / 参考書
 
 /* ---------- 設定 ---------- */
-const DEF = { clientId: "", geminiKey: "", indexFolder: "院内検索_iPad索引", rootHosp: "St Lukes", rootBook: "参考書", fake: false };
+const DEF = { clientId: "", geminiKey: "", indexFolder: "院内検索_iPad索引", rootHosp: "St Lukes", rootBook: "参考書", fake: false, loginHint: "" };
 let CFG = Object.assign({}, DEF);
 try { Object.assign(CFG, JSON.parse(localStorage.getItem("hs_cfg") || "{}")); } catch (e) {}
 function saveCfg() { try { localStorage.setItem("hs_cfg", JSON.stringify(CFG)); } catch (e) {} }
@@ -83,7 +83,8 @@ function login(resume, silent) {
   if (!CFG.clientId) { openSettings(); setStat("先に設定で「Client ID」を入力してください"); return; }
   try { sessionStorage.setItem("hs_resume", JSON.stringify(resume || {})); } catch (e) {}
   const q = new URLSearchParams({ client_id: CFG.clientId, redirect_uri: redirectUri(), response_type: "token", scope: SCOPE, include_granted_scopes: "true" });
-  if (silent) q.set("prompt", "none");
+  if (CFG.loginHint) q.set("login_hint", CFG.loginHint);   // ログインに使うGoogleアカウント（他のアカウントで自動ログインされるのを防ぐ）
+  q.set("prompt", silent ? "none" : "select_account");      // 通常はアカウント選択画面を必ず出す
   location.href = "https://accounts.google.com/o/oauth2/v2/auth?" + q;
 }
 async function needToken(resume) {
@@ -454,7 +455,7 @@ function setZoom(z) { if (!CUR) return; const n = CUR.n; CUR.zoom = z; buildPage
 
 /* ---------- 設定 ---------- */
 function openSettings() {
-  $("s_cid").value = CFG.clientId; $("s_key").value = CFG.geminiKey; $("s_fold").value = CFG.indexFolder; $("s_rh").value = CFG.rootHosp; $("s_rb").value = CFG.rootBook; $("s_fake").checked = CFG.fake;
+  $("s_cid").value = CFG.clientId; $("s_key").value = CFG.geminiKey; $("s_fold").value = CFG.indexFolder; $("s_rh").value = CFG.rootHosp; $("s_rb").value = CFG.rootBook; $("s_fake").checked = CFG.fake; $("s_hint").value = CFG.loginHint || "";
   $("s_redir").textContent = redirectUri(); $("settings").style.display = "block"; renderSaved();
 }
 function bind() {
@@ -463,7 +464,7 @@ function bind() {
   $("t1").onchange = () => { const t = $("t2"); t.innerHTML = '<option value="">すべての科/種別</option>'; const m = tree()[$("t1").value] || {}; Object.keys(m).sort().forEach(k => { const o = document.createElement("option"); o.value = k; o.textContent = k + " (" + m[k] + ")"; t.appendChild(o); }); if ($("q").value) run(); };
   ["t2", "ext", "yf", "pn"].forEach(i => $(i).onchange = () => { if ($("q").value) run(); });
   $("setbtn").onclick = openSettings; $("s_close").onclick = () => { $("settings").style.display = "none"; };
-  $("s_save").onclick = () => { CFG.clientId = $("s_cid").value.trim(); CFG.geminiKey = $("s_key").value.trim(); CFG.indexFolder = $("s_fold").value.trim() || DEF.indexFolder; CFG.rootHosp = $("s_rh").value.trim() || DEF.rootHosp; CFG.rootBook = $("s_rb").value.trim() || DEF.rootBook; CFG.fake = $("s_fake").checked; saveCfg(); $("settings").style.display = "none"; setStat("設定を保存しました"); };
+  $("s_save").onclick = () => { CFG.clientId = $("s_cid").value.trim(); CFG.geminiKey = $("s_key").value.trim(); CFG.indexFolder = $("s_fold").value.trim() || DEF.indexFolder; CFG.rootHosp = $("s_rh").value.trim() || DEF.rootHosp; CFG.rootBook = $("s_rb").value.trim() || DEF.rootBook; CFG.fake = $("s_fake").checked; CFG.loginHint = $("s_hint").value.trim(); saveCfg(); $("settings").style.display = "none"; setStat("設定を保存しました"); };
   $("syncbtn").onclick = async () => { try { if (await syncIndex()) { if (await loadIndex()) afterLoad(); } } catch (e) { setStat("取り込み失敗: " + e.message); } };
   $("vclose").onclick = () => { $("viewer").style.display = "none"; if (CUR && CUR.io) CUR.io.disconnect(); $("vpages").innerHTML = ""; CUR = null; };
   $("vprev").onclick = () => CUR && goPage(CUR.n - 1); $("vnext").onclick = () => CUR && goPage(CUR.n + 1);
