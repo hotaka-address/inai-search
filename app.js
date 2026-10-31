@@ -109,6 +109,13 @@ async function findChild(parent, name, folderOnly) {
     const d = await driveJSON("files", { q, fields: "files(id,name,mimeType)", pageSize: 5, spaces: "drive" });
     if (d.files && d.files.length) return d.files[0];
   }
+  if (parent === "root" && folderOnly) {   // 友達などから共有されたフォルダ（「共有アイテム」）も探す
+    for (const nm of [...new Set(tries)]) {
+      const q = "name='" + esc1(nm) + "' and sharedWithMe=true and trashed=false and mimeType='application/vnd.google-apps.folder'";
+      const d = await driveJSON("files", { q, fields: "files(id,name,mimeType)", pageSize: 5, spaces: "drive" });
+      if (d.files && d.files.length) return d.files[0];
+    }
+  }
   return null;
 }
 async function listChildren(parent) {
