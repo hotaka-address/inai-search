@@ -193,14 +193,13 @@ async function syncIndex() {
   const list = await listChildren(folder.id); const byName = new Map(list.map(x => [x.name, x]));
   const mf = byName.get("manifest.json"); if (!mf) { setStat("manifest.json がありません"); return false; }
   const man = JSON.parse(new TextDecoder().decode(await downloadBuf(mf.id)));
-  const need = [];
+  const need = [], optional = new Set();
   for (const s of man.shards) need.push(s.c, s.v);
-  need.push(man.bm25.terms, man.bm25.post, man.bm25.dl);
-  if (man.covers) need.push(man.covers);
+  for (const sg of segsOf(man)) { need.push(sg.bm25.terms, sg.bm25.post, sg.bm25.dl); if (sg.covers) { need.push(sg.covers); optional.add(sg.covers); } }
   const have = new Set(await idbKeys("blobs")); let total = 0;
   const todo = [];
   for (const n of need) {
-    const d = byName.get(n); if (!d) { if (n === man.covers) continue; throw new Error("Driveに " + n + " がありません（同期が終わっていない可能性）"); }   // 表紙は無くても動く
+    const d = byName.get(n); if (!d) { if (optional.has(n)) continue; throw new Error("Driveに " + n + " がありません（同期が終わっていない可能性）"); }   // 表紙は無くても動く
     const h = have.has(n) ? await idbGet("blobs", n) : null;
     if (!h || h.md5 !== d.md5Checksum) { todo.push(d); total += +d.size || 0; }
   }
@@ -217,6 +216,11 @@ async function syncIndex() {
 }
 
 /* ---------- 索引の読み込み ---------- */
+// 索引は「本体＋追加分(セグメント)」の集まり。旧形式(v1)は、全体を1つの本体として扱う
+function segsOf(man) {
+  if (man.segs) return man.segs;
+  return [{ id: 0, start: 0, n: man.nchunks, f0: 0, nfiles: man.files.length, covers: man.covers || "", bm25: { terms: man.bm25.terms, post: man.bm25.post, dl: man.bm25.dl, sumdl: man.bm25.avg * man.nchunks } }];
+}
 let IX = null;
 async function gunzipText(buf) {
   const ds = new DecompressionStream("gzip"); const w = ds.writable.getWriter(); w.write(new Uint8Array(buf)); w.close();
@@ -234,11 +238,15 @@ async function loadIndex() {
   }
   const fid = new Int32Array(N); let p = 0;
   man.files.forEach((f, i) => { fid.fill(i, p, p + f.n); p += f.n; f.ptxt = norm(f.path.replace(/\.[^./]+$/, "")); f.grp = grpOf(f); });
-  const tb = await idbGet("blobs", man.bm25.terms), pb = await idbGet("blobs", man.bm25.post), db = await idbGet("blobs", man.bm25.dl);
-  if (!tb || !pb || !db) return false;
-  const terms = JSON.parse(await gunzipText(tb.data)); Object.setPrototypeOf(terms, null);
-  const cb = man.covers ? await idbGet("blobs", man.covers) : null;
-  IX = { cov: cb ? cb.data : null, covUrl: new Map(), man, dim, N, Q, S, fid, files: man.files, terms, post: new Uint8Array(pb.data), dl: new Uint16Array(db.data), avg: man.bm25.avg, lru: new Map() };
+  const segs = []; let sumdl = 0; const covs = {};
+  for (const sg of segsOf(man)) {
+    const tb = await idbGet("blobs", sg.bm25.terms), pb = await idbGet("blobs", sg.bm25.post), db = await idbGet("blobs", sg.bm25.dl);
+    if (!tb || !pb || !db) return false;
+    const terms = JSON.parse(await gunzipText(tb.data)); Object.setPrototypeOf(terms, null);
+    segs.push({ start: sg.start, n: sg.n, terms, post: new Uint8Array(pb.data), dl: new Uint16Array(db.data) }); sumdl += sg.bm25.sumdl;
+    if (sg.covers) { const cb = await idbGet("blobs", sg.covers); if (cb) covs[sg.covers] = cb.data; }
+  }
+  IX = { covs, covUrl: new Map(), man, dim, N, Q, S, fid, files: man.files, segs, avg: sumdl / Math.max(1, N), lru: new Map() };
   return true;
 }
 async function shardChunks(si) {
@@ -251,14 +259,19 @@ async function chunkAt(i) { const si = shardOf(i); const arr = await shardChunks
 
 /* ---------- 検索 ---------- */
 function bm25(q, mask) {
-  const N = IX.N, sb = new Float32Array(N), k1 = 1.2, b = 0.75, post = IX.post;
+  const N = IX.N, sb = new Float32Array(N), k1 = 1.2, b = 0.75, avg = IX.avg;
   for (const g of new Set(grams(q))) {
-    const e = IX.terms[g]; if (!e) continue;
-    const df = e[2], idf = Math.log(1 + (N - df + 0.5) / (df + 0.5)); let ptr = e[0]; const end = ptr + e[1]; let doc = 0;
-    while (ptr < end) {
-      let d = 0, sh = 0, by; do { by = post[ptr++]; d |= (by & 127) << sh; sh += 7; } while (by & 128);
-      doc += d; const tf = post[ptr++];
-      if (mask[doc]) sb[doc] += idf * tf * (k1 + 1) / (tf + k1 * (1 - b + b * IX.dl[doc] / IX.avg));
+    let df = 0; const es = [];
+    for (const sg of IX.segs) { const e = sg.terms[g]; if (e) { df += e[2]; es.push([sg, e]); } }
+    if (!df) continue;
+    const idf = Math.log(1 + (N - df + 0.5) / (df + 0.5));
+    for (const [sg, e] of es) {
+      const post = sg.post; let ptr = e[0]; const end = ptr + e[1]; let doc = 0;
+      while (ptr < end) {
+        let d = 0, sh = 0, by; do { by = post[ptr++]; d |= (by & 127) << sh; sh += 7; } while (by & 128);
+        doc += d; const tf = post[ptr++]; const gd = sg.start + doc;
+        if (mask[gd]) sb[gd] += idf * tf * (k1 + 1) / (tf + k1 * (1 - b + b * sg.dl[doc] / avg));
+      }
     }
   }
   return sb;
@@ -288,7 +301,7 @@ function snippet(text, q, w = 170) {
 async function search(q, f) {
   const t0 = performance.now(); const files = IX.files, N = IX.N;
   const fm = new Uint8Array(files.length);
-  files.forEach((x, i) => { fm[i] = (!f.src || x.grp === f.src) && (!f.top1 || (x.top1 || "(直下)") === f.top1) && (!f.top2 || (x.top2 || "(直下)") === f.top2) && (!f.ext || x.ext === f.ext) && (x.src === SRC_BOOK || x.year >= (f.year || 0)) ? 1 : 0; });
+  files.forEach((x, i) => { fm[i] = !x.dead && (!f.src || x.grp === f.src) && (!f.top1 || (x.top1 || "(直下)") === f.top1) && (!f.top2 || (x.top2 || "(直下)") === f.top2) && (!f.ext || x.ext === f.ext) && (x.src === SRC_BOOK || x.year >= (f.year || 0)) ? 1 : 0; });
   const mask = new Uint8Array(N); for (let i = 0; i < N; i++) mask[i] = fm[IX.fid[i]];
   const qn = norm(q), qg = [...new Set(grams(q))];
   const sb = bm25(q, mask); const cand = new Map(); const K = 60, M = 300;
@@ -329,7 +342,7 @@ function hl(el, text, terms) {
   text.split(re).forEach((p, i) => { if (i % 2) { const m = document.createElement("mark"); m.textContent = p; el.appendChild(m); } else el.appendChild(document.createTextNode(p)); });
 }
 function tree() {
-  const s = $("src").value, m = {}; IX.files.forEach(f => { if (s && f.grp !== s) return; const a = f.top1 || "(直下)", b = f.top2 || "(直下)"; m[a] = m[a] || {}; m[a][b] = (m[a][b] || 0) + 1; }); return m;
+  const s = $("src").value, m = {}; IX.files.forEach(f => { if (f.dead || (s && f.grp !== s)) return; const a = f.top1 || "(直下)", b = f.top2 || "(直下)"; m[a] = m[a] || {}; m[a][b] = (m[a][b] || 0) + 1; }); return m;
 }
 function fillT1() { const t = $("t1"); t.innerHTML = '<option value="">すべての分類</option>'; Object.keys(tree()).sort().forEach(k => { const o = document.createElement("option"); o.value = o.textContent = k; t.appendChild(o); }); $("t2").innerHTML = '<option value="">すべての科/種別</option>'; }
 function filters() { return { src: $("src").value, top1: $("t1").value, top2: $("t2").value, ext: $("ext").value, year: +$("yf").value, prefNew: $("pn").checked }; }
@@ -363,7 +376,8 @@ async function run() {
 /* ---------- 表紙 ---------- */
 function coverEl(f, onclick) {
   let u = IX.covUrl.get(f.rel);
-  if (!u && f.cv && IX.cov) { u = URL.createObjectURL(new Blob([new Uint8Array(IX.cov, f.cv[0], f.cv[1])], { type: "image/jpeg" })); IX.covUrl.set(f.rel, u); }
+  const cbuf = f.cv && IX.covs[f.cvf || IX.man.covers];
+  if (!u && cbuf) { u = URL.createObjectURL(new Blob([new Uint8Array(cbuf, f.cv[0], f.cv[1])], { type: "image/jpeg" })); IX.covUrl.set(f.rel, u); }
   let e;
   if (u) { e = document.createElement("img"); e.className = "cv"; e.src = u; e.alt = ""; e.loading = "lazy"; }
   else { e = document.createElement("div"); e.className = "cv0"; e.textContent = f.ext.toUpperCase(); }
@@ -478,7 +492,7 @@ function bind() {
   $("vdrive").onclick = () => CUR && window.open("https://drive.google.com/file/d/" + CUR.id + "/view", "_blank");
 }
 function afterLoad() {
-  const c = {}; IX.files.forEach(f => c[f.grp] = (c[f.grp] || 0) + 1);
+  const c = {}; IX.files.forEach(f => { if (!f.dead) c[f.grp] = (c[f.grp] || 0) + 1; });
   $("info").textContent = "院内 " + (c[SRC_HOSP] || 0) + " ／ レジデントノート " + (c[GRP_RN] || 0) + " ／ 参考書 " + (c[SRC_BOOK] || 0) + " ファイル・" + IX.N + "箇所";
   fillT1(); setStat("");
 }
@@ -492,7 +506,7 @@ async function boot() {
   else if (!CFG.clientId) { setStat("初回設定: 右上の「設定」でClient IDなどを入れ、「索引を更新」を押してください"); }
   else if (ar === "ok") { try { if (await syncIndex() && await loadIndex()) afterLoad(); } catch (e) { setStat("取り込み失敗: " + e.message); } }
   else setStat("索引がありません。「索引を更新」を押してください。");
-  if (resume && resume.q && IX) { $("q").value = resume.q; await run(); if (resume.open && ar === "ok") { const f = IX.files.find(x => x.rel === resume.open.rel); if (f) openFile(f, resume.open.page); } }
+  if (resume && resume.q && IX) { $("q").value = resume.q; await run(); if (resume.open && ar === "ok") { const f = IX.files.find(x => x.rel === resume.open.rel && !x.dead); if (f) openFile(f, resume.open.page); } }
 }
 window.addEventListener("load", boot);
 window.__hs = { grams, bm25: (q) => bm25(q, new Uint8Array(IX.N).fill(1)), search: (q, f) => search(q, Object.assign({ src: "", top1: "", top2: "", ext: "", year: 0, prefNew: true }, f || {})), get IX() { return IX; }, loadIndex, syncIndex, CFG };
