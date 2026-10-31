@@ -5,6 +5,7 @@ const CUR_YEAR = new Date().getFullYear();
 const SCOPE = "https://www.googleapis.com/auth/drive.readonly";
 const PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
 const PDFJS_WORKER = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+const fmtSize = n => !n ? "" : (n >= 1e9 ? (n / 1e9).toFixed(2) + " GB" : n >= 1e6 ? (n / 1e6).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1e3)) + " KB") + "（" + n.toLocaleString("ja-JP") + " バイト）";
 const SRC_HOSP = "院内資料", SRC_BOOK = "参考書", GRP_RN = "レジデントノート";
 const grpOf = (f) => (f.src === SRC_BOOK && f.top1 === GRP_RN) ? GRP_RN : f.src;   // 区分: 院内資料 / レジデントノート / 参考書
 
@@ -336,6 +337,7 @@ async function run() {
     const t = document.createElement("div"); t.className = "title"; t.textContent = x.file.name;
     const me = document.createElement("div"); me.className = "meta"; const folder = x.file.path.split("/").slice(0, -1).join("/");
     me.textContent = (x.file.src === SRC_BOOK ? (x.file.grp === GRP_RN ? "📓 " : "📚 参考書 ・ ") : "") + (folder || (x.file.src === SRC_BOOK ? "参考書" : "")) + (x.file.src === SRC_BOOK ? "" : " ・ " + x.file.year + "年頃");
+    if (x.file.size) { const sz = document.createElement("span"); sz.className = "sz"; sz.textContent = "　" + fmtSize(x.file.size); me.appendChild(sz); }
     const sn = document.createElement("div"); sn.className = "snip"; hl(sn, x.snip, r.terms);
     const ch = document.createElement("div"); ch.className = "chips";
     const b = document.createElement("span"); b.className = "chip best"; b.textContent = "最有力: " + x.loc; ch.appendChild(b);
