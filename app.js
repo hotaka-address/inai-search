@@ -144,6 +144,24 @@ async function downloadBlob(id, onProg) {   // 大きいPDF用: 連結せずBlob
   for (;;) { const { done, value } = await rd.read(); if (done) break; parts.push(value); got += value.length; if (onProg) onProg(got, total); }
   return new Blob(parts, { type: "application/pdf" });
 }
+/* ---------- 最近開いた本の自動キャッシュ（一度開いたら、しばらくは端末から即開く。上限を超えたら古い順に削除） ---------- */
+const RC_MAX = 1.2e9, RC_DAYS = 14, RC_ONE = 300e6, RCING = new Set();
+async function rcDel(rel) { await idbDel("kv", "rcd:" + rel); await idbDel("kv", "rcm:" + rel); }
+async function rcList() { const out = []; for (const k of await idbKeys("kv")) if (typeof k === "string" && k.startsWith("rcm:")) { const m = await idbGet("kv", k); if (m) out.push(m); } return out; }
+async function rcPrune() {
+  try { const L = (await rcList()).sort((a, b) => b.t - a.t); const now = Date.now(); let tot = 0;
+    for (const m of L) { if (now - m.t > RC_DAYS * 864e5 || tot + m.size > RC_MAX) await rcDel(m.rel); else tot += m.size; } } catch (e) {}
+}
+async function rcStore(f, id, blob) {
+  try { await idbPut("kv", "rcd:" + f.rel, blob); await idbPut("kv", "rcm:" + f.rel, { rel: f.rel, id, name: f.name, size: blob.size, t: Date.now() }); await rcPrune(); }
+  catch (e) { try { await rcDel(f.rel); } catch (e2) {} }
+}
+async function rcFetch(f, id) {    // 開いている間に、裏で全体を取り込む（次回から即開く）
+  if (f.ext !== "pdf" || SAVED.has(f.rel) || RCING.has(f.rel) || (f.size && f.size > RC_ONE)) return;
+  RCING.add(f.rel);
+  try { if (await idbGet("kv", "rcm:" + f.rel)) return; const blob = await downloadBlob(id); if (blob.size <= RC_ONE) await rcStore(f, id, blob); } catch (e) {}
+  finally { RCING.delete(f.rel); }
+}
 /* ---------- オフライン保存（よく使う本をこの端末に保存して、Driveを使わず即開く） ---------- */
 const SAVED = new Map();
 async function loadSaved() { SAVED.clear(); try { for (const k of await idbKeys("kv")) if (typeof k === "string" && k.startsWith("offm:")) { const m = await idbGet("kv", k); if (m) SAVED.set(m.rel, m); } } catch (e) {} }
@@ -169,6 +187,9 @@ async function renderSaved() {
     const b = document.createElement("button"); b.className = "sub"; b.textContent = "削除"; b.onclick = async () => { await unsavePdf(m.rel); renderSaved(); }; r.append(sp, b); box.appendChild(r); });
   let est = ""; try { const e = await navigator.storage.estimate(); est = "　端末の使用量 " + Math.round(e.usage / 1e6) + "MB（上限の目安 " + (Math.round(e.quota / 1e8) / 10) + "GB）"; } catch (e) {}
   const h = document.createElement("div"); h.style.cssText = "font-size:12px;color:var(--mu)"; h.textContent = (L.length ? "保存済み " + L.length + "冊・合計 " + Math.round(tot / 1e6) + "MB" : "まだ保存した本はありません（検索結果の「📥 保存」で保存できます）") + est; box.prepend(h);
+  try { const R = await rcList(); const rt = R.reduce((a, m) => a + m.size, 0); const d = document.createElement("div"); d.className = "row"; d.style.cssText = "justify-content:space-between;font-size:12px;color:var(--mu);margin-top:8px";
+    const sp = document.createElement("span"); sp.textContent = "最近開いた本の自動保存 " + R.length + "冊・" + Math.round(rt / 1e6) + "MB（上限1.2GB・14日で自動削除）";
+    const b = document.createElement("button"); b.className = "sub"; b.textContent = "全部消す"; b.onclick = async () => { for (const m of R) await rcDel(m.rel); renderSaved(); }; d.append(sp, b); box.appendChild(d); } catch (e) {}
 }
 const pathCache = new Map();
 async function resolveDriveId(f) {
@@ -327,7 +348,7 @@ async function search(q, f) {
   res.sort((a, b) => b[0] - a[0]); const mx = res.length ? res[0][0] : 1; const out = [];
   for (const [sc, fi, lst] of res.slice(0, 30)) {
     const x = files[fi]; const best = await chunkAt(lst[0][1]); const seen = new Set([best[1] + ":" + best[2]]); const others = [];
-    for (const [, i] of lst.slice(1, 12)) { if (others.length >= 4) break; const c = await chunkAt(i); const k = c[1] + ":" + c[2]; if (!seen.has(k)) { seen.add(k); others.push(locLabel(c[1], c[2])); } }
+    for (const [, i] of lst.slice(1, 12)) { if (others.length >= 4) break; const c = await chunkAt(i); const k = c[1] + ":" + c[2]; if (!seen.has(k)) { seen.add(k); others.push({ loc: locLabel(c[1], c[2]), page: (c[1] === "p" || c[1] === "s") ? c[2] : 0 }); } }
     out.push({ file: x, score: Math.round(100 * sc / mx), loc: locLabel(best[1], best[2]), page: best[1] === "p" ? best[2] : (best[1] === "s" ? best[2] : 0), snip: snippet(best[3], q), others });
   }
   return { results: out, total: res.length, mode, err, ms: Math.round(performance.now() - t0), terms: q.split(/[\s　]+/).filter(Boolean) };
@@ -361,8 +382,8 @@ async function run() {
     if (x.file.size) { const sz = document.createElement("span"); sz.className = "sz"; sz.textContent = "　" + fmtSize(x.file.size); me.appendChild(sz); }
     const sn = document.createElement("div"); sn.className = "snip"; hl(sn, x.snip, r.terms);
     const ch = document.createElement("div"); ch.className = "chips";
-    const b = document.createElement("span"); b.className = "chip best"; b.textContent = "最有力: " + x.loc; ch.appendChild(b);
-    x.others.forEach(o => { const s = document.createElement("span"); s.className = "chip"; s.textContent = o; ch.appendChild(s); });
+    const b = document.createElement("span"); b.className = "chip best"; b.textContent = "最有力: " + x.loc; b.onclick = () => openFile(x.file, x.page); ch.appendChild(b);
+    x.others.forEach(o => { const s = document.createElement("span"); s.className = "chip"; s.textContent = o.loc; s.onclick = () => openFile(x.file, o.page); ch.appendChild(s); });
     const br = document.createElement("div"); br.className = "bar"; br.innerHTML = "<i style='width:" + x.score + "%'></i>";
     m.append(t, me, sn, ch, br);
     const ac = document.createElement("div"); ac.className = "act";
@@ -392,10 +413,13 @@ let PDFLIB = null, CUR = null;
 function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = () => rej(new Error("pdf.jsを読み込めません（ネット接続を確認）")); document.head.appendChild(s); }); }
 async function openFile(f, page) {
   const resume = { q: $("q").value, open: { rel: f.rel, page } };
-  const sv = f.ext === "pdf" && SAVED.get(f.rel);
-  if (sv) {   // この端末に保存済み: ログインもDriveも使わず開く
+  let sv = f.ext === "pdf" && SAVED.get(f.rel), rcache = false;
+  if (!sv && f.ext === "pdf") { const m = await idbGet("kv", "rcm:" + f.rel).catch(() => null); if (m) { sv = m; rcache = true; } }
+  if (sv) {   // 保存済み・最近開いた本: ログインもDriveも使わず開く
     try {
-      const blob = await idbGet("kv", "offd:" + f.rel);
+      const blob = await idbGet("kv", (rcache ? "rcd:" : "offd:") + f.rel);
+      if (blob && rcache) idbPut("kv", "rcm:" + f.rel, Object.assign({}, sv, { t: Date.now() })).catch(() => {});
+      if (!blob && rcache) await rcDel(f.rel);
       if (blob) {
         $("viewer").style.display = "flex"; $("vtitle").textContent = f.name; $("vstat").textContent = "読み込み中…"; $("vsave").textContent = saveLabel(f);
         if (!window.pdfjsLib) await loadScript(PDFJS); pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
@@ -414,12 +438,12 @@ async function openFile(f, page) {
     const tok = getToken(); const url = API + "files/" + id + "?alt=media"; let doc;
     try { doc = await pdfjsLib.getDocument({ url, httpHeaders: { Authorization: "Bearer " + tok }, rangeChunkSize: 1 << 20, disableAutoFetch: true }).promise; }
     catch (e) {
-      const key = "pdf:" + id; let data = await idbGet("kv", key);
-      if (!data) { data = await downloadBuf(id, (g, t) => { $("vstat").textContent = "ダウンロード中 " + Math.round(g / 1e6) + (t ? " / " + Math.round(t / 1e6) : "") + " MB"; }); try { await idbPut("kv", key, data); } catch (e2) {} }
-      doc = await pdfjsLib.getDocument({ data: data.slice(0) }).promise;
+      const blob = await downloadBlob(id, (g, t) => { $("vstat").textContent = "ダウンロード中 " + Math.round(g / 1e6) + (t ? " / " + Math.round(t / 1e6) : "") + " MB"; });
+      if (blob.size <= RC_ONE) rcStore(f, id, blob);
+      doc = await pdfjsLib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) }).promise;
     }
     if (CUR && CUR.io) CUR.io.disconnect();
-    CUR = { doc, f, id, zoom: 1 }; await buildPages(Math.min(Math.max(page || 1, 1), doc.numPages));
+    CUR = { doc, f, id, zoom: 1 }; rcFetch(f, id); await buildPages(Math.min(Math.max(page || 1, 1), doc.numPages));
   } catch (e) { $("vstat").textContent = "開けません: " + e.message; setStat("開けません: " + e.message); }
 }
 /* 連続スクロール表示: 全ページ分の枠を作り、画面の近くのページだけ描画する */
