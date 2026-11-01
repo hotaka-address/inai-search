@@ -238,6 +238,13 @@ async function syncIndex() {
 
 /* ---------- 索引の読み込み ---------- */
 // 索引は「本体＋追加分(セグメント)」の集まり。旧形式(v1)は、全体を1つの本体として扱う
+/* コアカンの年度: 所属フォルダ「コアカン 2024年度」やファイル名から決める（索引の年度が不正確なため） */
+function fixCoreYear(f) {
+  const t = (f.rel || f.path || "").normalize("NFC"); if (!/コアカン/.test(t)) return;
+  f.core = true;
+  const m = t.match(/コアカン\s*(20\d\d)\s*年度/) || t.match(/(20\d\d)\s*年度\s*コアカン/) || t.match(/コアカンファレンス\s*(20\d\d)/) || t.match(/(20\d\d)\s*コアカン/);
+  if (m) f.year = +m[1]; else if (!(f.year >= 2015)) f.year = 2020;
+}
 function segsOf(man) {
   if (man.segs) return man.segs;
   return [{ id: 0, start: 0, n: man.nchunks, f0: 0, nfiles: man.files.length, covers: man.covers || "", bm25: { terms: man.bm25.terms, post: man.bm25.post, dl: man.bm25.dl, sumdl: man.bm25.avg * man.nchunks } }];
@@ -258,7 +265,7 @@ async function loadIndex() {
     S.set(new Float32Array(b.data.slice(sh.n * dim, sh.n * dim + sh.n * 4)), sh.start);
   }
   const fid = new Int32Array(N); let p = 0;
-  man.files.forEach((f, i) => { fid.fill(i, p, p + f.n); p += f.n; f.ptxt = norm(f.path.replace(/\.[^./]+$/, "")); f.grp = grpOf(f); });
+  man.files.forEach((f, i) => { fid.fill(i, p, p + f.n); p += f.n; f.ptxt = norm(f.path.replace(/\.[^./]+$/, "")); f.grp = grpOf(f); fixCoreYear(f); });
   const segs = []; let sumdl = 0; const covs = {};
   for (const sg of segsOf(man)) {
     const tb = await idbGet("blobs", sg.bm25.terms), pb = await idbGet("blobs", sg.bm25.post), db = await idbGet("blobs", sg.bm25.dl);
@@ -342,6 +349,7 @@ async function search(q, f) {
     let sc = lst[0][0] + (lst.length > 1 ? 0.25 * lst[1][0] : 0) + (lst.length > 2 ? 0.1 * lst[2][0] : 0);
     if (x.ptxt.includes(qn)) sc += 0.010; else if (qg.length) sc += 0.006 * qg.filter(g => x.ptxt.includes(g)).length / qg.length;
     if (f.prefNew && x.src === SRC_HOSP) sc *= Math.max(0.8, 1 - 0.02 * Math.max(0, CUR_YEAR - x.year));
+    if (f.prefNew && x.core) sc *= 1 + 0.06 * Math.max(0, x.year - 2019);   // コアカンは新しい年度ほど上に出す
     if (x.rel.includes("未分類")) sc *= 0.97;
     res.push([sc, fi, lst]);
   }
@@ -499,7 +507,7 @@ function openSettings() {
 function bind() {
   $("go").onclick = run; $("q").addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) run(); });
   $("src").onchange = () => { fillT1(); if ($("q").value) run(); };
-  const seg = $("seg"); [...$("src").options].forEach(o => { const b = document.createElement("button"); b.textContent = o.value ? o.textContent : "すべて"; b.onclick = () => { $("src").value = o.value; $("src").onchange(); }; b.dataset.v = o.value; seg.appendChild(b); });
+  const seg = $("seg"); [...$("src").options].forEach(o => { const b = document.createElement("button"); b.textContent = o.value ? o.textContent : "すべて"; b.onclick = () => { $("src").value = o.value; mark(); $("src").onchange(); }; b.dataset.v = o.value; seg.appendChild(b); });
   const mark = () => [...seg.children].forEach(b => b.classList.toggle("on", b.dataset.v === $("src").value)); mark(); $("src").addEventListener("change", mark);
   $("t1").onchange = () => { const t = $("t2"); t.innerHTML = '<option value="">すべての科/種別</option>'; const m = tree()[$("t1").value] || {}; Object.keys(m).sort().forEach(k => { const o = document.createElement("option"); o.value = k; o.textContent = k + " (" + m[k] + ")"; t.appendChild(o); }); if ($("q").value) run(); };
   ["t2", "ext", "yf", "pn"].forEach(i => $(i).onchange = () => { if ($("q").value) run(); });
