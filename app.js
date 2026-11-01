@@ -145,7 +145,7 @@ async function downloadBlob(id, onProg) {   // 大きいPDF用: 連結せずBlob
   return new Blob(parts, { type: "application/pdf" });
 }
 /* ---------- 最近開いた本の自動キャッシュ（一度開いたら、しばらくは端末から即開く。上限を超えたら古い順に削除） ---------- */
-const RC_MAX = 1.2e9, RC_DAYS = 14, RC_ONE = 300e6, RCING = new Set();
+const RC_MAX = 1.2e9, RC_DAYS = 7, RC_ONE = 300e6, RCING = new Set();
 async function rcDel(rel) { await idbDel("kv", "rcd:" + rel); await idbDel("kv", "rcm:" + rel); }
 async function rcList() { const out = []; for (const k of await idbKeys("kv")) if (typeof k === "string" && k.startsWith("rcm:")) { const m = await idbGet("kv", k); if (m) out.push(m); } return out; }
 async function rcPrune() {
@@ -188,7 +188,7 @@ async function renderSaved() {
   let est = ""; try { const e = await navigator.storage.estimate(); est = "　端末の使用量 " + Math.round(e.usage / 1e6) + "MB（上限の目安 " + (Math.round(e.quota / 1e8) / 10) + "GB）"; } catch (e) {}
   const h = document.createElement("div"); h.style.cssText = "font-size:12px;color:var(--mu)"; h.textContent = (L.length ? "保存済み " + L.length + "冊・合計 " + Math.round(tot / 1e6) + "MB" : "まだ保存した本はありません（検索結果の「📥 保存」で保存できます）") + est; box.prepend(h);
   try { const R = await rcList(); const rt = R.reduce((a, m) => a + m.size, 0); const d = document.createElement("div"); d.className = "row"; d.style.cssText = "justify-content:space-between;font-size:12px;color:var(--mu);margin-top:8px";
-    const sp = document.createElement("span"); sp.textContent = "最近開いた本の自動保存 " + R.length + "冊・" + Math.round(rt / 1e6) + "MB（上限1.2GB・14日で自動削除）";
+    const sp = document.createElement("span"); sp.textContent = "最近開いた本の自動保存 " + R.length + "冊・" + Math.round(rt / 1e6) + "MB（上限1.2GB・7日で自動削除）";
     const b = document.createElement("button"); b.className = "sub"; b.textContent = "全部消す"; b.onclick = async () => { for (const m of R) await rcDel(m.rel); renderSaved(); }; d.append(sp, b); box.appendChild(d); } catch (e) {}
 }
 const pathCache = new Map();
