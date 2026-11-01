@@ -499,6 +499,8 @@ function openSettings() {
 function bind() {
   $("go").onclick = run; $("q").addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) run(); });
   $("src").onchange = () => { fillT1(); if ($("q").value) run(); };
+  const seg = $("seg"); [...$("src").options].forEach(o => { const b = document.createElement("button"); b.textContent = o.value ? o.textContent : "すべて"; b.onclick = () => { $("src").value = o.value; $("src").onchange(); }; b.dataset.v = o.value; seg.appendChild(b); });
+  const mark = () => [...seg.children].forEach(b => b.classList.toggle("on", b.dataset.v === $("src").value)); mark(); $("src").addEventListener("change", mark);
   $("t1").onchange = () => { const t = $("t2"); t.innerHTML = '<option value="">すべての科/種別</option>'; const m = tree()[$("t1").value] || {}; Object.keys(m).sort().forEach(k => { const o = document.createElement("option"); o.value = k; o.textContent = k + " (" + m[k] + ")"; t.appendChild(o); }); if ($("q").value) run(); };
   ["t2", "ext", "yf", "pn"].forEach(i => $(i).onchange = () => { if ($("q").value) run(); });
   $("setbtn").onclick = openSettings; $("s_close").onclick = () => { $("settings").style.display = "none"; };
