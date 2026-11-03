@@ -529,26 +529,25 @@ function buildShelf() {
     const t = document.createElement("div"); t.className = "sname"; t.textContent = (isMag(f) ? "📓 " : "") + f.name;
     const me = document.createElement("div"); me.className = "smeta"; const par = f.parentRel && byRel.get(f.parentRel);
     me.textContent = (par ? "章別（" + par.name.replace(/\.pdf$/i, "") + "）　" : "") + (f.size ? fmtSize(f.size).replace(/（.*$/, "") : "");
-    const gl = document.createElement("div"); gl.className = "sgn";
-    const btns = document.createElement("div"); btns.className = "sbtns";
+    const gl = document.createElement("div"); gl.className = "sgn"; const ed = document.createElement("div"); ed.className = "sedit";
+    const btns = document.createElement("div"); btns.className = "sbtns"; const right = document.createElement("div"); right.className = "sright";
     const b1 = document.createElement("button"); b1.className = "sub"; b1.textContent = "開く"; b1.onclick = () => openFile(f, 1);
     btns.append(b1);
     if (f.ext === "pdf") { const b2 = document.createElement("button"); b2.className = "sub"; b2.textContent = saveLabel(f); b2.onclick = () => toggleSave(f, b2); btns.append(b2); }
     const draw = () => {
-      gl.innerHTML = ""; const u = gnLink(f);
-      const b3 = document.createElement("button"); b3.className = "sub"; b3.textContent = u ? "🔗 リンク変更" : "🔗 GoodNotesリンクを追加";
-      b3.onclick = () => edit(); gl.append(b3);
-      if (u) { const b4 = document.createElement("button"); b4.className = "sub"; b4.textContent = "GoodNotesで開く"; b4.onclick = () => openGN(f, 0); gl.append(b4); const ok = document.createElement("span"); ok.className = "sok"; ok.textContent = "✅ 登録済み"; gl.append(ok); }
+      gl.innerHTML = ""; ed.innerHTML = ""; right.style.display = ""; const u = gnLink(f);
+      if (u) { const b4 = document.createElement("button"); b4.className = "sub"; b4.textContent = "GoodNotes"; b4.onclick = () => openGN(f, 0); gl.append(b4); }
+      const b3 = document.createElement("button"); b3.className = "sub"; b3.textContent = u ? "🔗 変更" : "🔗 リンク追加"; b3.onclick = () => edit(); gl.append(b3);
       r.classList.toggle("nolink", !u);
     };
     const edit = () => {
-      gl.innerHTML = ""; const inp = document.createElement("input"); inp.type = "text"; inp.placeholder = "GoodNotesの共有リンクを貼り付け"; inp.value = gnLink(f) || ""; inp.style.cssText = "width:100%;margin-bottom:6px";
+      right.style.display = "none"; ed.innerHTML = ""; const inp = document.createElement("input"); inp.type = "text"; inp.placeholder = "GoodNotesの共有リンクを貼り付け"; inp.value = gnLink(f) || ""; inp.style.cssText = "width:100%;margin:6px 0";
       const sv = document.createElement("button"); sv.textContent = "保存"; sv.onclick = () => { const v = inp.value.trim(); if (v && !/^https?:\/\//.test(v)) { alert("リンク（https://…）を貼り付けてください"); return; } gnSet(f, v); draw(); shelfCount(); };
       const cn = document.createElement("button"); cn.className = "sub"; cn.textContent = "キャンセル"; cn.onclick = draw;
       const dl = document.createElement("button"); dl.className = "sub"; dl.textContent = "リンクを削除"; dl.onclick = () => { gnSet(f, ""); draw(); shelfCount(); };
-      const row = document.createElement("div"); row.className = "row"; row.append(sv, cn); if (gnLink(f)) row.append(dl); gl.append(inp, row); inp.focus();
+      const row = document.createElement("div"); row.className = "row"; row.append(sv, cn); if (gnLink(f)) row.append(dl); ed.append(inp, row); inp.focus();
     };
-    draw(); m.append(t, me, gl, btns); r.append(cv, m); box.appendChild(r);
+    draw(); right.append(gl, btns); m.append(t, me, ed); r.append(cv, m, right); box.appendChild(r);
   });
   filterShelf(); shelfCount();
 }
