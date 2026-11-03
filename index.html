@@ -2,12 +2,12 @@
 <html lang="ja"><head><meta charset="utf-8">
 <meta name="viewport" id="vpmeta" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="文献検索"><meta name="apple-mobile-web-app-status-bar-style" content="default"><meta name="theme-color" content="#f7f7fa" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#0c0e14" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-title" content="文献検索"><meta name="apple-mobile-web-app-status-bar-style" content="default"><meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#0c0e14" media="(prefers-color-scheme: dark)">
 <link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" href="icon-180.png">
 <title>文献検索</title>
 <style>
-:root{--bg:#f7f7fa;--card:#fff;--tx:#0f1222;--mu:#7a7f93;--ac:#4f46e5;--bd:#e7e8ee;--hl:#e4e0ff;--wa:#b45309;--seg:#ececf2;--chip:#eef0f6}
-@media(prefers-color-scheme:dark){:root{--bg:#0c0e14;--card:#14171f;--tx:#eceef6;--mu:#8d93a8;--ac:#8b8cf8;--bd:#232733;--hl:#3a3680;--wa:#fbbf24;--seg:#1b1e28;--chip:#1d212c}}
+:root{--bg:#ffffff;--vbg:#f1f1f6;--card:#fff;--tx:#0f1222;--mu:#7a7f93;--ac:#4f46e5;--bd:#e7e8ee;--hl:#e4e0ff;--wa:#b45309;--seg:#ececf2;--chip:#eef0f6}
+@media(prefers-color-scheme:dark){:root{--bg:#0c0e14;--card:#14171f;--tx:#eceef6;--mu:#8d93a8;--ac:#8b8cf8;--bd:#232733;--hl:#3a3680;--wa:#fbbf24;--seg:#1b1e28;--chip:#1d212c;--vbg:#0c0e14}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.55 -apple-system,"Hiragino Sans",sans-serif;padding-bottom:40px}
 .wrap{max-width:980px;margin:0 auto;padding:16px;padding-top:max(16px,env(safe-area-inset-top))}
 h1{font-size:18px;margin:0 0 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}h1 small{color:var(--mu);font-weight:400;font-size:12px}
@@ -134,6 +134,8 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}body{touch-action:manip
 #fbar{margin:4px 0 2px}#ftoggle{padding:6px 14px;font-size:13px;border-radius:10px}#ftoggle.on{color:var(--ac);border-color:var(--ac)}
 #filters{display:none !important}#filters.open{display:flex !important}
 @media (max-width:600px){#filters.open{display:grid !important}}
+#vbody{background:var(--vbg)}
+#seg{scrollbar-width:none}#seg::-webkit-scrollbar{display:none}
 </style></head><body>
 <div id="dscrim"></div>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><symbol id="ico-folder-c" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15a3 3 0 0 1 3-3h9l3.5 4H39a3 3 0 0 1 3 3v16a3 3 0 0 1-3 3H9a3 3 0 0 1-3-3z"/><path d="M28 12v10l3.5-2.5L35 22V12" stroke-width="1.8" style="stroke:var(--ac);fill:var(--tile)"/></symbol>
