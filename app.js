@@ -530,19 +530,20 @@ function buildShelf() {
   all.forEach(f => { if (f.parentRel) { if (!kids.has(f.parentRel)) kids.set(f.parentRel, []); kids.get(f.parentRel).push(f); } });
   const mk = (f, child) => {
     const r = document.createElement("div"); r.className = "srow" + (child ? " schild" : ""); r.dataset.t = norm(f.name + " " + f.path); r.dataset.rel = f.rel; if (child) r.dataset.p = f.parentRel;
-    const cv = coverEl(f, () => askOpen(f)); cv.className = cv.tagName === "IMG" ? "fcv" : "fcv0"; if (cv.tagName !== "IMG") cv.textContent = "";
+    let tap = () => askOpen(f);   // 章別を持つ本は、タップで展開（開くのは右の「開く」ボタン）
+    const cv = coverEl(f, () => tap()); cv.className = cv.tagName === "IMG" ? "fcv" : "fcv0"; if (cv.tagName !== "IMG") cv.textContent = "";
     const m = document.createElement("div"); m.className = "smain";
     const t = document.createElement("div"); t.className = "sname"; const nk = (kids.get(f.rel) || []).length;
-    const chev = document.createElement("span"), tt = document.createElement("span"); tt.textContent = (isMag(f) ? "📓 " : "") + f.name; tt.style.cursor = "pointer"; tt.onclick = () => askOpen(f);
-    const me = document.createElement("div"); me.className = "smeta"; me.textContent = (nk ? "章別 " + nk + "件（タップで展開）　" : "") + (f.size ? fmtSize(f.size).replace(/（.*$/, "") : "");
+    const chev = document.createElement("span"), tt = document.createElement("span"); tt.textContent = (isMag(f) ? "📓 " : "") + f.name; tt.style.cursor = "pointer"; tt.onclick = () => tap();
+    const me = document.createElement("div"); me.className = "smeta"; me.textContent = (nk ? "章別 " + nk + "件（タップで展開・開くは右のボタン）　" : "") + (f.size ? fmtSize(f.size).replace(/（.*$/, "") : "");
     if (nk) {
       const tg = () => { SHELF_OPEN.has(f.rel) ? SHELF_OPEN.delete(f.rel) : SHELF_OPEN.add(f.rel); chev.textContent = SHELF_OPEN.has(f.rel) ? "▼ " : "▶ "; filterShelf(); };
-      chev.textContent = SHELF_OPEN.has(f.rel) ? "▼ " : "▶ "; chev.style.cssText = "cursor:pointer;display:inline-block;padding:4px 6px 4px 0"; chev.onclick = tg; me.style.cursor = "pointer"; me.onclick = tg;
+      chev.textContent = SHELF_OPEN.has(f.rel) ? "▼ " : "▶ "; chev.style.cssText = "cursor:pointer;display:inline-block;padding:4px 6px 4px 0"; chev.onclick = tg; me.style.cursor = "pointer"; me.onclick = tg; tap = tg;
     }
     t.append(chev, tt);
     const gl = document.createElement("div"); gl.className = "sgn"; const ed = document.createElement("div"); ed.className = "sedit";
     const btns = document.createElement("div"); btns.className = "sbtns"; const right = document.createElement("div"); right.className = "sright";
-    const b1 = document.createElement("button"); b1.className = "sub"; b1.textContent = "開く"; b1.onclick = () => askOpen(f);
+    const b1 = document.createElement("button"); b1.className = "openbtn"; b1.textContent = "開く"; b1.onclick = () => askOpen(f);
     btns.append(b1);
     if (f.ext === "pdf") { const b2 = document.createElement("button"); b2.className = "sub"; b2.textContent = saveLabel(f); b2.onclick = () => toggleSave(f, b2); btns.append(b2); }
     const draw = () => {
