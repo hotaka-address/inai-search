@@ -329,7 +329,7 @@ function snippet(text, q, w = 170) {
 async function search(q, f) {
   const t0 = performance.now(); const files = IX.files, N = IX.N;
   const fm = new Uint8Array(files.length);
-  files.forEach((x, i) => { fm[i] = !x.dead && (!f.src || x.grp === f.src) && (!f.top1 || (x.top1 || "(直下)") === f.top1) && (!f.top2 || (x.top2 || "(直下)") === f.top2) && (!f.ext || x.ext === f.ext) && (x.src === SRC_BOOK || x.year >= (f.year || 0)) ? 1 : 0; });
+  files.forEach((x, i) => { fm[i] = !x.dead && inScope(x, f.src) && (!f.top1 || (x.top1 || "(直下)") === f.top1) && (!f.top2 || (x.top2 || "(直下)") === f.top2) && (!f.ext || x.ext === f.ext) && (x.src === SRC_BOOK || x.year >= (f.year || 0)) ? 1 : 0; });
   const mask = new Uint8Array(N); for (let i = 0; i < N; i++) mask[i] = fm[IX.fid[i]];
   const qn = norm(q), qg = [...new Set(grams(q))];
   const sb = bm25(q, mask); const cand = new Map(); const K = 60, M = 300;
@@ -371,7 +371,7 @@ function hl(el, text, terms) {
   text.split(re).forEach((p, i) => { if (i % 2) { const m = document.createElement("mark"); m.textContent = p; el.appendChild(m); } else el.appendChild(document.createTextNode(p)); });
 }
 function tree() {
-  const s = $("src").value, m = {}; IX.files.forEach(f => { if (f.dead || (s && f.grp !== s)) return; const a = f.top1 || "(直下)", b = f.top2 || "(直下)"; m[a] = m[a] || {}; m[a][b] = (m[a][b] || 0) + 1; }); return m;
+  const s = $("src").value, m = {}; IX.files.forEach(f => { if (f.dead || !inScope(f, s)) return; const a = f.top1 || "(直下)", b = f.top2 || "(直下)"; m[a] = m[a] || {}; m[a][b] = (m[a][b] || 0) + 1; }); return m;
 }
 function fillT1() { const t = $("t1"); t.innerHTML = '<option value="">すべての分類</option>'; Object.keys(tree()).sort().forEach(k => { const o = document.createElement("option"); o.value = o.textContent = k; t.appendChild(o); }); $("t2").innerHTML = '<option value="">すべての科/種別</option>'; }
 function filters() { return { src: $("src").value, top1: $("t1").value, top2: $("t2").value, ext: $("ext").value, year: +$("yf").value, prefNew: $("pn").checked }; }
@@ -417,6 +417,67 @@ function coverEl(f, onclick) {
 async function openInDrive(f) {
   try { const id = await resolveDriveId(f); window.open("https://drive.google.com/file/d/" + id + "/view", "_blank"); } catch (e) { setStat(e.message); }
 }
+
+/* ---------- マイフォルダ（よく使う本だけを検索するための自分用フォルダ。この端末に保存） ---------- */
+let FOLDERS = []; const FSET = new Map();
+const inScope = (x, s) => !s || (s.startsWith("f:") ? (FSET.get(s) || new Set()).has(x.rel) : x.grp === s);
+function loadFolders() { try { FOLDERS = JSON.parse(localStorage.getItem("hs_folders") || "[]"); } catch (e) { FOLDERS = []; } rebuildFSet(); }
+function rebuildFSet() { FSET.clear(); FOLDERS.forEach(f => FSET.set("f:" + f.id, new Set(f.rels))); }
+function saveFolders() { try { localStorage.setItem("hs_folders", JSON.stringify(FOLDERS)); } catch (e) { alert("フォルダを保存できませんでした（端末の保存が使えません）"); } rebuildFSet(); }
+function folderCount(f) { return IX ? IX.files.filter(x => !x.dead && f.rels.includes(x.rel)).length : f.rels.length; }
+function markSeg() { [...$("seg").children].forEach(b => b.classList.toggle("on", b.dataset.v === $("src").value)); }
+function renderSeg() {
+  const sel = $("src"), seg = $("seg"); seg.innerHTML = "";
+  [...sel.options].filter(o => o.value.startsWith("f:")).forEach(o => o.remove());
+  FOLDERS.forEach(f => { const o = document.createElement("option"); o.value = "f:" + f.id; o.textContent = "📁 " + f.name; sel.appendChild(o); });
+  if (![...sel.options].some(o => o.value === sel.value)) sel.value = "";
+  [...sel.options].forEach(o => { const b = document.createElement("button"); b.textContent = o.value ? o.textContent : "すべて"; b.dataset.v = o.value; b.onclick = () => { sel.value = o.value; markSeg(); sel.onchange(); }; seg.appendChild(b); });
+  markSeg();
+}
+function openDrawer(on) { $("drawer").classList.toggle("open", on); $("dscrim").style.display = on ? "block" : "none"; if (on) renderDrawer(); }
+function renderDrawer() {
+  const box = $("dlist"); box.innerHTML = "";
+  if (!FOLDERS.length) { const e = document.createElement("div"); e.className = "dempty"; e.textContent = "まだフォルダがありません。"; box.appendChild(e); }
+  FOLDERS.forEach(f => {
+    const r = document.createElement("div"); r.className = "drow";
+    const n = document.createElement("div"); n.className = "dname"; n.textContent = "📁 " + f.name; const c = document.createElement("small"); c.textContent = " " + folderCount(f) + "冊"; n.appendChild(c);
+    n.onclick = () => { $("src").value = "f:" + f.id; markSeg(); openDrawer(false); $("src").onchange(); };
+    const ed = document.createElement("button"); ed.className = "sub"; ed.textContent = "編集"; ed.onclick = () => openEditor(f);
+    const de = document.createElement("button"); de.className = "sub"; de.textContent = "削除"; de.onclick = () => { if (!confirm("フォルダ「" + f.name + "」を削除しますか？（本そのものは消えません）")) return; FOLDERS = FOLDERS.filter(x => x.id !== f.id); saveFolders(); renderSeg(); renderDrawer(); $("src").onchange(); };
+    r.append(n, ed, de); box.appendChild(r);
+  });
+}
+let EDIT = null, SEL = new Set();
+function openEditor(f) {
+  if (!IX) { alert("先に索引を取り込んでください。"); return; }
+  EDIT = f; SEL = new Set(f ? f.rels : []); $("fname").value = f ? f.name : ""; $("fq").value = ""; $("frn").checked = false;
+  $("ftitle").textContent = f ? "フォルダを編集" : "フォルダを作る"; $("fed").style.display = "flex"; openDrawer(false); buildEditorList();
+}
+function closeEditor() { $("fed").style.display = "none"; EDIT = null; }
+function editorBooks() { return IX.files.filter(x => !x.dead && x.src === SRC_BOOK && (x.grp !== GRP_RN || $("frn").checked || SEL.has(x.rel))).sort((a, b) => a.name.localeCompare(b.name, "ja")); }
+function buildEditorList() {
+  const box = $("flist"); box.innerHTML = "";
+  editorBooks().forEach(x => {
+    const r = document.createElement("label"); r.className = "frow"; r.dataset.t = norm(x.name + " " + x.path);
+    const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = SEL.has(x.rel); cb.onchange = () => { cb.checked ? SEL.add(x.rel) : SEL.delete(x.rel); countSel(); };
+    const cv = coverEl(x, () => {}); cv.onclick = null; cv.className = cv.tagName === "IMG" ? "fcv" : "fcv0"; if (cv.tagName !== "IMG") cv.textContent = "";
+    const t = document.createElement("span"); t.className = "ft"; t.textContent = (x.grp === GRP_RN ? "📓 " : "") + x.name;
+    r.append(cb, cv, t); r.cb = cb; r.rel = x.rel; box.appendChild(r);
+  });
+  filterEditor(); countSel();
+}
+function filterEditor() { const q = norm($("fq").value.trim()); [...$("flist").children].forEach(r => { r.style.display = !q || r.dataset.t.includes(q) ? "" : "none"; }); }
+function selAll(on) { [...$("flist").children].forEach(r => { if (r.style.display === "none") return; r.cb.checked = on; on ? SEL.add(r.rel) : SEL.delete(r.rel); }); countSel(); }
+function countSel() { $("fcount").textContent = SEL.size + "冊 選択中"; }
+function saveEditor() {
+  const name = $("fname").value.trim(); if (!name) { alert("フォルダ名を入力してください。"); return; }
+  if (!SEL.size) { alert("本を1冊以上選んでください。"); return; }
+  const rels = [...SEL];
+  if (EDIT) { EDIT.name = name; EDIT.rels = rels; } else FOLDERS.push({ id: Date.now().toString(36), name, rels });
+  const sel = "f:" + (EDIT ? EDIT.id : FOLDERS[FOLDERS.length - 1].id);
+  saveFolders(); renderSeg(); closeEditor(); $("src").value = sel; markSeg(); $("src").onchange();
+}
+
 let PDFLIB = null, CUR = null;
 function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = () => rej(new Error("pdf.jsを読み込めません（ネット接続を確認）")); document.head.appendChild(s); }); }
 async function openFile(f, page) {
@@ -507,8 +568,8 @@ function openSettings() {
 function bind() {
   $("go").onclick = run; $("q").addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) run(); });
   $("src").onchange = () => { fillT1(); if ($("q").value) run(); };
-  const seg = $("seg"); [...$("src").options].forEach(o => { const b = document.createElement("button"); b.textContent = o.value ? o.textContent : "すべて"; b.onclick = () => { $("src").value = o.value; mark(); $("src").onchange(); }; b.dataset.v = o.value; seg.appendChild(b); });
-  const mark = () => [...seg.children].forEach(b => b.classList.toggle("on", b.dataset.v === $("src").value)); mark(); $("src").addEventListener("change", mark);
+  loadFolders(); renderSeg(); $("menubtn").onclick = () => openDrawer(true); $("dscrim").onclick = () => openDrawer(false); $("dnew").onclick = () => openEditor(null); $("fcancel").onclick = closeEditor; $("fsave").onclick = saveEditor;
+  $("fq").oninput = filterEditor; $("frn").onchange = buildEditorList; $("fall").onclick = () => selAll(true); $("fnone").onclick = () => selAll(false);
   $("t1").onchange = () => { const t = $("t2"); t.innerHTML = '<option value="">すべての科/種別</option>'; const m = tree()[$("t1").value] || {}; Object.keys(m).sort().forEach(k => { const o = document.createElement("option"); o.value = k; o.textContent = k + " (" + m[k] + ")"; t.appendChild(o); }); if ($("q").value) run(); };
   ["t2", "ext", "yf", "pn"].forEach(i => $(i).onchange = () => { if ($("q").value) run(); });
   $("setbtn").onclick = openSettings; $("s_close").onclick = () => { $("settings").style.display = "none"; };
