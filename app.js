@@ -219,6 +219,7 @@ async function syncIndex() {
   const need = [], optional = new Set();
   for (const s of man.shards) need.push(s.c, s.v);
   for (const sg of segsOf(man)) { need.push(sg.bm25.terms, sg.bm25.post, sg.bm25.dl); if (sg.covers) { need.push(sg.covers); optional.add(sg.covers); } }
+  if (byName.has("vocab.json.gz")) { need.push("vocab.json.gz"); optional.add("vocab.json.gz"); }   /* 入力補助の用語集 */
   const have = new Set(await idbKeys("blobs")); let total = 0;
   const todo = [];
   for (const n of need) {
@@ -409,6 +410,30 @@ async function runVSearch() {
     const row = document.createElement("div"); row.className = "vrow"; const b = document.createElement("b"); b.textContent = x.loc; const sn = document.createElement("div"); hl(sn, x.snip, r.terms);
     row.append(b, sn); if (x.page > 0) row.onclick = () => { goPage(x.page); if (window.innerWidth < 700) showVsp(false); }; box.appendChild(row);
   });
+}
+/* ---------- 入力補助（医学用語の候補）: ひらがなや先頭の数文字から、索引に出てくる用語（漢字・カタカナ・英語）を提案する ---------- */
+let VOC = null;
+async function loadVocab() {
+  try { const b = await idbGet("blobs", "vocab.json.gz"); if (!b) { VOC = null; return; }
+    const j = JSON.parse(await gunzipText(b.data)).t; VOC = { t: j.map(x => x[0]), tl: j.map(x => x[0].toLowerCase()), r: j.map(x => x[1] || "") }; } catch (e) { VOC = null; }
+}
+const kata2hira = s => s.replace(/[\u30a1-\u30f6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
+function suggestFor(tok0) {
+  if (!VOC) return []; const tok = kata2hira(tok0.normalize("NFKC").toLowerCase()); if (!tok) return [];
+  const kana = /^[\u3041-\u3096\u30fc]+$/.test(tok); if ((kana || /^[a-z0-9\-]+$/.test(tok)) && tok.length < 2) return [];
+  const out = [], seen = new Set(), N = VOC.t.length;
+  const take = i => { if (seen.has(i) || VOC.t[i] === tok0) return; seen.add(i); out.push(VOC.t[i]); };
+  for (let i = 0; i < N && out.length < 10; i++) if (kana ? VOC.r[i].startsWith(tok) : VOC.tl[i].startsWith(tok)) take(i);
+  if (out.length < 10 && tok.length >= 2) for (let i = 0; i < N && out.length < 10; i++) if (kana ? VOC.r[i].includes(tok) : VOC.tl[i].includes(tok)) take(i);
+  return out;
+}
+function attachSuggest(inp, box) {
+  const upd = () => {
+    box.innerHTML = ""; const v = inp.value, i = Math.max(v.lastIndexOf(" "), v.lastIndexOf("　")); const L = suggestFor(v.slice(i + 1));
+    L.forEach(term => { const b = document.createElement("button"); b.className = "sg"; b.textContent = term; b.onpointerdown = e => e.preventDefault();
+      b.onclick = () => { inp.value = v.slice(0, i + 1) + term + " "; box.innerHTML = ""; inp.focus(); }; box.appendChild(b); });
+  };
+  inp.addEventListener("input", upd); inp.addEventListener("focus", upd); inp.addEventListener("blur", () => setTimeout(() => { box.innerHTML = ""; }, 250));
 }
 /* ---------- 画面 ---------- */
 function setStat(t) { $("stat").textContent = t; }
@@ -767,6 +792,7 @@ function bind() {
   $("src").onchange = () => { fillT1(); if ($("q").value) run(); };
   $("ftoggle").onclick = () => { $("filters").classList.toggle("open"); updFBadge(); };
   $("dkeysave").onclick = () => { CFG.folderKey = $("dkey").value.trim(); saveCfg(); $("dmsg").textContent = "同期中…"; syncFolders(true); };
+  attachSuggest($("q"), $("sugg")); attachSuggest($("vq"), $("vsugg"));
   $("fchead").onclick = () => openEditor(null); $("dshelf").onclick = () => openShelf(true); $("sclose").onclick = () => openShelf(false); $("sq").oninput = filterShelf; $("snl").onchange = filterShelf; $("srn").onchange = buildShelf;
   loadFolders(); renderSeg(); $("src").value = "参考書"; markSeg(); /* 起動時は「参考書」を選んでおく */ $("menubtn").onclick = () => openDrawer(true); $("dscrim").onclick = () => openDrawer(false); $("dnew").onclick = () => openEditor(null); $("fcancel").onclick = closeEditor; $("fsave").onclick = saveEditor;
   $("fq").oninput = filterEditor; $("frn").onchange = buildEditorList; $("fall").onclick = () => selAll(true); $("fnone").onclick = () => selAll(false);
@@ -790,7 +816,7 @@ function bind() {
 function afterLoad() {
   const c = {}; IX.files.forEach(f => { if (!f.dead) c[f.grp] = (c[f.grp] || 0) + 1; });
   $("info").textContent = "院内 " + (c[SRC_HOSP] || 0) + " ／ 雑誌 " + (c[GRP_RN] || 0) + " ／ 参考書 " + (c[SRC_BOOK] || 0) + " ファイル・" + IX.N + "箇所";
-  fillT1(); setStat(""); syncFolders(false);
+  fillT1(); setStat(""); syncFolders(false); loadVocab();
 }
 async function boot() {
   bind(); await loadSaved(); if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
