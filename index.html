@@ -136,6 +136,8 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}body{touch-action:manip
 @media (max-width:600px){#filters.open{display:grid !important}}
 #vbody{background:var(--vbg)}
 #seg{scrollbar-width:none}#seg::-webkit-scrollbar{display:none}
+/* 状態バー部分は、メニューの暗い幕が重なっても、いつも背景色のままにする */
+body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area-inset-top);background:var(--bg);z-index:1000;pointer-events:none}
 </style></head><body>
 <div id="dscrim"></div>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><symbol id="ico-folder-c" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15a3 3 0 0 1 3-3h9l3.5 4H39a3 3 0 0 1 3 3v16a3 3 0 0 1-3 3H9a3 3 0 0 1-3-3z"/><path d="M28 12v10l3.5-2.5L35 22V12" stroke-width="1.8" style="stroke:var(--ac);fill:var(--tile)"/></symbol>
