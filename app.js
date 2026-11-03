@@ -403,7 +403,7 @@ function showVsp(on) {   // 検索結果の欄（幅が広いときは左、狭�
 }
 async function runVSearch() {
   const q = $("vq").value.trim(), box = $("vres"); if (!q || !CUR) return; box.textContent = "検索中…"; showVsp(true);
-  const rel = CUR.f.rel, r = await searchInFile(q, rel); if (!CUR || CUR.f.rel !== rel) return; box.innerHTML = "";
+  const rel = CUR.f.rel, r = await searchInFile(q, rel); if (!CUR || CUR.f.rel !== rel) return; box.innerHTML = ""; CUR.terms = r.terms; rehighlight();
   if (!r.results.length) { box.textContent = "この本の中に、見つかりませんでした"; return; }
   const h = document.createElement("div"); h.className = "vhint"; h.textContent = r.results.length + "か所（" + (r.mode === "hybrid" ? "キーワード＋意味検索" : "キーワードのみ") + "）　タップでそのページへ"; box.appendChild(h);
   r.results.forEach(x => {
@@ -462,7 +462,7 @@ async function run() {
   r.results.forEach((x, i) => {
     const c = document.createElement("div"); c.className = "card"; c.dataset.rel = x.file.rel;
     const cands = []; [{ page: x.page, loc: x.loc }, ...x.others].forEach(o => { if (o.page > 0 && !cands.some(k => k.page === o.page)) cands.push(o); });
-    const open = p => { document.querySelectorAll("#res .card.sel").forEach(e => e.classList.remove("sel")); c.classList.add("sel"); openFile(x.file, p, { cands, overlay: false }); };
+    const open = p => { document.querySelectorAll("#res .card.sel").forEach(e => e.classList.remove("sel")); c.classList.add("sel"); openFile(x.file, p, { cands, overlay: false, terms: r.terms }); };
     const rk = document.createElement("div"); rk.className = "rk"; rk.textContent = i + 1;
     const m = document.createElement("div"); m.className = "main";
     const t = document.createElement("div"); t.className = "title"; t.textContent = x.file.name; t.style.cursor = "pointer"; t.onclick = e => { e.stopPropagation(); open(x.page); };
@@ -710,7 +710,7 @@ async function openFile(f, page, opts) {
         if (!window.pdfjsLib) await loadScript(PDFJS); pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
         const doc = await pdfjsLib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) }).promise;
         if (CUR && CUR.io) CUR.io.disconnect();
-        CUR = { doc, f, id: sv.id, zoom: 1, cands: opts.cands }; await buildPages(Math.min(Math.max(page || 1, 1), doc.numPages)); return;
+        CUR = { doc, f, id: sv.id, zoom: 1, cands: opts.cands, terms: opts.terms }; await buildPages(Math.min(Math.max(page || 1, 1), doc.numPages)); return;
       }
     } catch (e) { $("viewer").style.display = "none"; setStat("保存データを開けませんでした。Driveから開きます: " + e.message); }
   }
@@ -728,7 +728,7 @@ async function openFile(f, page, opts) {
       doc = await pdfjsLib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) }).promise;
     }
     if (CUR && CUR.io) CUR.io.disconnect();
-    CUR = { doc, f, id, zoom: 1, cands: opts.cands }; rcFetch(f, id); await buildPages(Math.min(Math.max(page || 1, 1), doc.numPages));
+    CUR = { doc, f, id, zoom: 1, cands: opts.cands, terms: opts.terms }; rcFetch(f, id); await buildPages(Math.min(Math.max(page || 1, 1), doc.numPages));
   } catch (e) { $("vstat").textContent = "開けません: " + e.message; setStat("開けません: " + e.message); }
 }
 /* 連続スクロール表示: 全ページ分の枠を作り、画面の近くのページだけ描画する */
@@ -760,7 +760,36 @@ async function renderPg(d) {
     await page.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise; if (CUR !== cur || d._tok !== tok) return;
     d.style.height = Math.round(vp.height / dpr) + "px"; d.replaceChildren(cv);
     if (cur.align && +d.dataset.n <= cur.align) realign();
+    if (HL_ON && cur.terms && cur.terms.length) addHighlights(d, page, sc, cur, tok);
   } catch (e) { d._r = 0; }
+}
+/* ---------- 検索語の蛍光マーカー（黄緑）: ページの文字の位置を調べて、検索語の上に半透明の色を重ねる ---------- */
+let HL_ON = true; try { HL_ON = localStorage.getItem("hs_hl") !== "0"; } catch (e) {}
+function hlTerms(terms) {   /* 検索語を、マーカーを付ける単位に分ける（「急性膵炎の治療」→「急性膵炎」「治療」） */
+  const out = new Set();
+  (terms || []).forEach(t => { t = t.normalize("NFKC").toLowerCase();
+    t.replace(/([\u4e00-\u9fff\u30a0-\u30ff])[のをはがにでともへや]([\u4e00-\u9fff\u30a0-\u30ff])/g, "$1 $2").split(/[\s、，,・]+/).forEach(w => { if (w.length >= 2 && !/^[a-z0-9]$/.test(w)) out.add(w); }); });
+  return [...out];
+}
+async function addHighlights(d, page, sc, cur, tok) {
+  try {
+    const tc = await page.getTextContent(); if (CUR !== cur || d._tok !== tok || !d.firstChild) return;
+    const vp = page.getViewport({ scale: sc }), layer = document.createElement("div");
+    layer.style.cssText = "position:absolute;left:0;top:0;width:" + vp.width + "px;height:" + vp.height + "px;opacity:0;pointer-events:none;overflow:hidden;line-height:1;";
+    layer.className = "tlayer"; layer.style.setProperty("--scale-factor", vp.scale); layer.style.setProperty("--total-scale-factor", vp.scale); d.appendChild(layer); const divs = [];
+    await pdfjsLib.renderTextLayer({ textContentSource: tc, textContent: tc, container: layer, viewport: vp, textDivs: divs }).promise;
+    if (CUR !== cur || d._tok !== tok) { layer.remove(); return; }
+    const hl = document.createElement("div"); hl.className = "hlayer"; const box = d.getBoundingClientRect(), terms = cur.hterms || (cur.hterms = hlTerms(cur.terms));
+    divs.forEach(sp => { const txt = (sp.textContent || "").toLowerCase(), node = sp.firstChild; if (!node || !txt) return;
+      terms.forEach(t => { let i = txt.indexOf(t); while (i >= 0) { try { const r = document.createRange(); r.setStart(node, i); r.setEnd(node, i + t.length);
+        for (const q of r.getClientRects()) { if (q.width < 1) continue; const e = document.createElement("div"); e.style.cssText = "position:absolute;left:" + (q.left - box.left) + "px;top:" + (q.top - box.top) + "px;width:" + q.width + "px;height:" + q.height + "px"; hl.appendChild(e); } } catch (e) {} i = txt.indexOf(t, i + t.length); } });
+    });
+    layer.remove(); if (hl.children.length) d.appendChild(hl);
+  } catch (e) {}
+}
+function rehighlight() {   /* 検索語が変わった/ON-OFFを切り替えたとき、いま描かれているページを描き直す */
+  if (!CUR || !CUR.pgs) return; CUR.hterms = null;
+  CUR.pgs.forEach(d => { if (d._r) { releasePg(d); renderPg(d); } });
 }
 function releasePg(d) { if (!d._r) return; d._tok = (d._tok || 0) + 1; d._r = 0; const c = d.firstChild; if (c) { c.width = c.height = 0; } d.replaceChildren(); }
 function realign() { if (!CUR || !CUR.align) return; const d = CUR.pgs[CUR.align - 1], box = $("vbody"); if (d && Math.abs(box.scrollTop - d.offsetTop) > 2) { CUR.setting = 1; box.scrollTop = d.offsetTop; } }
@@ -803,6 +832,7 @@ function bind() {
   $("s_save").onclick = () => { CFG.clientId = $("s_cid").value.replace(/\s+/g, "");   // 空白・改行は取り除く
     const okId = /^\d+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$/.test(CFG.clientId); CFG.geminiKey = $("s_key").value.trim(); CFG.indexFolder = $("s_fold").value.trim() || DEF.indexFolder; CFG.rootHosp = $("s_rh").value.trim() || DEF.rootHosp; CFG.rootBook = $("s_rb").value.trim() || DEF.rootBook; CFG.fake = $("s_fake").checked; CFG.loginHint = $("s_hint").value.trim(); saveCfg(); $("settings").style.display = "none"; setStat(CFG.clientId && !okId ? "⚠ Client IDの形がおかしいです（「数字-英数字.apps.googleusercontent.com」の1行）。Google Cloudからコピーし直してください" : "設定を保存しました"); };
   $("syncbtn").onclick = async () => { try { if (await syncIndex()) { if (await loadIndex()) afterLoad(); } } catch (e) { setStat("取り込み失敗: " + e.message); } };
+  $("vhl").onclick = () => { HL_ON = !HL_ON; try { localStorage.setItem("hs_hl", HL_ON ? "1" : "0"); } catch (e) {} $("vhl").classList.toggle("on", HL_ON); rehighlight(); }; $("vhl").classList.toggle("on", HL_ON);
   $("vsearch").onclick = () => { const b = $("vsb"); b.classList.toggle("open"); if (b.classList.contains("open")) { $("vq").focus(); if ($("vres").children.length) showVsp(true); } else showVsp(false); }; $("vqgo").onclick = () => { $("vq").blur(); runVSearch(); }; $("vq").addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); $("vq").blur(); runVSearch(); } });
   $("vclose").onclick = () => { $("vsp").classList.remove("open"); $("vsb").classList.remove("open"); $("vres").innerHTML = ""; document.body.classList.remove("vover"); $("viewer").style.display = "none"; if (CUR && CUR.io) CUR.io.disconnect(); $("vpages").innerHTML = ""; CUR = null; };
   $("vprev").onclick = () => CUR && goPage(CUR.n - 1); $("vnext").onclick = () => CUR && goPage(CUR.n + 1);
