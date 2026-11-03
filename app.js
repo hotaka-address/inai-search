@@ -181,6 +181,16 @@ async function toggleSave(f, btn) {
   catch (e) { setStat("保存できません: " + (e && e.name === "QuotaExceededError" ? "端末の空き容量が足りません" : (e && e.message) || e)); }
   btn.disabled = false; btn.textContent = saveLabel(f);
 }
+async function renderRc() {
+  const box = $("s_rc"); if (!box) return; box.innerHTML = "";
+  try {
+    const R = await rcList(), tot = R.reduce((a, m) => a + m.size, 0); let est = "";
+    try { const e = await navigator.storage.estimate(); est = "　端末の使用量 " + Math.round(e.usage / 1e6) + "MB"; } catch (e) {}
+    const sp = document.createElement("span"); sp.style.cssText = "flex:1;font-size:13px"; sp.textContent = "自動保存 " + R.length + "冊・" + Math.round(tot / 1e6) + "MB（上限1.2GB・7日で自動削除）" + est;
+    const b = document.createElement("button"); b.className = "sub"; b.textContent = "全部消す"; b.onclick = async () => { if (!R.length || !confirm("最近開いた本の自動保存（" + R.length + "冊）をすべて消しますか？（Driveの元ファイルや、📥保存した本は消えません）")) return; for (const m of R) await rcDel(m.rel); renderRc(); };
+    const row = document.createElement("div"); row.className = "row"; row.append(sp, b); box.appendChild(row);
+  } catch (e) {}
+}
 const pathCache = new Map();
 async function resolveDriveId(f) {
   const key = f.rel; if (pathCache.has(key)) return pathCache.get(key);
@@ -668,13 +678,13 @@ function setZoom(z) { if (!CUR) return; const n = CUR.n; CUR.zoom = z; buildPage
 /* ---------- 設定 ---------- */
 function openSettings() {
   $("s_cid").value = CFG.clientId; $("s_key").value = CFG.geminiKey; $("s_fold").value = CFG.indexFolder; $("s_rh").value = CFG.rootHosp; $("s_rb").value = CFG.rootBook; $("s_fake").checked = CFG.fake; $("s_hint").value = CFG.loginHint || "";
-  $("s_redir").textContent = redirectUri(); $("settings").style.display = "block";
+  $("s_redir").textContent = redirectUri(); $("settings").style.display = "block"; renderRc();
 }
 function bind() {
   $("go").onclick = run; $("q").addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) run(); });
   $("src").onchange = () => { fillT1(); if ($("q").value) run(); };
   $("dkeysave").onclick = () => { CFG.folderKey = $("dkey").value.trim(); saveCfg(); $("dmsg").textContent = "同期中…"; syncFolders(true); };
-  $("dshelf").onclick = () => openShelf(true); $("sclose").onclick = () => openShelf(false); $("sq").oninput = filterShelf; $("snl").onchange = filterShelf; $("srn").onchange = buildShelf;
+  $("fchead").onclick = () => openEditor(null); $("dshelf").onclick = () => openShelf(true); $("sclose").onclick = () => openShelf(false); $("sq").oninput = filterShelf; $("snl").onchange = filterShelf; $("srn").onchange = buildShelf;
   loadFolders(); renderSeg(); $("menubtn").onclick = () => openDrawer(true); $("dscrim").onclick = () => openDrawer(false); $("dnew").onclick = () => openEditor(null); $("fcancel").onclick = closeEditor; $("fsave").onclick = saveEditor;
   $("fq").oninput = filterEditor; $("frn").onchange = buildEditorList; $("fall").onclick = () => selAll(true); $("fnone").onclick = () => selAll(false);
   $("t1").onchange = () => { const t = $("t2"); t.innerHTML = '<option value="">すべての科/種別</option>'; const m = tree()[$("t1").value] || {}; Object.keys(m).sort().forEach(k => { const o = document.createElement("option"); o.value = k; o.textContent = k + " (" + m[k] + ")"; t.appendChild(o); }); if ($("q").value) run(); };

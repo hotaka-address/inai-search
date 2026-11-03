@@ -71,7 +71,7 @@ mark{background:var(--hl);color:inherit;border-radius:4px;padding:0 2px}
 <div id="drawer">
  <div class="dtitle">メニュー</div>
  <button id="dshelf" class="shelfbtn"><svg class="shelfico" width="44" height="44"><use href="#ico-shelf"/></svg><span><b>本棚</b><small>本の一覧・GoodNotesリンク・保存</small></span><i>›</i></button>
- <div class="foldercard"><div class="fchead"><svg class="shelfico" width="44" height="44"><use href="#ico-folder"/></svg><span><b>マイフォルダ</b><small>よく使う本だけを検索の範囲にできます</small></span></div>
+ <div class="foldercard"><div class="fchead" id="fchead" style="cursor:pointer" title="フォルダを作る"><svg class="shelfico" width="44" height="44"><use href="#ico-folder"/></svg><span><b>マイフォルダ</b><small>よく使う本だけを検索の範囲にできます</small></span><i style="margin-left:auto;font-style:normal;color:var(--mu);font-size:22px">＋</i></div>
  <div id="dlist"></div><button id="dnew">＋ フォルダを作る</button></div>
  <div class="dsync"><div class="dsec">PCと同期</div><div class="dhint" style="margin:0 0 6px">PCと共有する（Google Drive経由）。PCとiPadで<b>同じ共有名</b>を入れます。空にすると共有しません。</div>
  <input id="dkey" type="text" placeholder="共有名（例：hota）" style="width:100%"><button class="sub" id="dkeysave" style="margin-top:6px;width:100%">保存して同期</button><div id="dmsg" style="font-size:12px;color:var(--mu);margin-top:6px"></div></div>
@@ -105,6 +105,7 @@ mark{background:var(--hl);color:inherit;border-radius:4px;padding:0 2px}
  <label>Drive上の索引フォルダ名</label><input id="s_fold" type="text">
  <label>Drive上の資料フォルダ名（院内資料 / 参考書）</label><div class="row"><input id="s_rh" type="text" style="flex:1"><input id="s_rb" type="text" style="flex:1"></div>
  <label><input type="checkbox" id="s_fake"> テスト用（意味検索にダミーを使う）</label>
+ <label>最近開いた本の自動保存（この端末。次回から即開けます）</label><div id="s_rc"></div>
  <label>Google Cloudに登録する「リダイレクトURI」はこれです:</label><div id="s_redir" style="font-size:12px;word-break:break-all;user-select:all"></div>
  <div class="row" style="margin-top:14px"><button id="s_save">保存</button><button class="sub" id="s_close">閉じる</button></div>
 </div></div>
