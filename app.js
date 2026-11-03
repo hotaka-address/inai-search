@@ -412,8 +412,8 @@ async function run() {
     m.append(t, me, sn, ch, br);
     const ac = document.createElement("div"); ac.className = "act";
     const o1 = document.createElement("button"); o1.textContent = "開く"; o1.onclick = () => openFile(x.file, x.page);
-    const o2 = document.createElement("button"); o2.className = "sub"; o2.textContent = "Driveで開く"; o2.onclick = () => openInDrive(x.file);
-    ac.append(o1, o2); if (x.file.ext === "pdf") { const o3 = document.createElement("button"); o3.className = "sub"; o3.textContent = saveLabel(x.file); o3.onclick = () => toggleSave(x.file, o3); ac.append(o3); }
+    const o2 = gnLink(x.file) ? document.createElement("button") : null; if (o2) { o2.className = "sub"; o2.textContent = "GoodNotesで開く"; o2.onclick = () => openGN(x.file, x.page); }
+    ac.append(o1); if (o2) ac.append(o2); if (x.file.ext === "pdf") { const o3 = document.createElement("button"); o3.className = "sub"; o3.textContent = saveLabel(x.file); o3.onclick = () => toggleSave(x.file, o3); ac.append(o3); }
     c.append(rk, coverEl(x.file, () => openFile(x.file, x.page)), m, ac); box.appendChild(c);
   });
 }
@@ -430,6 +430,16 @@ function coverEl(f, onclick) {
 }
 
 /* ---------- ファイルを開く ---------- */
+/* GoodNotesで開く: 設定に「ファイル名=共有リンク」を1行ずつ書いた本だけ、GoodNotes（自分の既存の書類）で開く。リンクはこの端末にだけ保存する */
+function gnLink(f) {
+  let t = ""; try { t = localStorage.getItem("hs_gn") || ""; } catch (e) {}
+  const nm = x => x.normalize("NFC").trim().toLowerCase().replace(/\.pdf$/, "");
+  const me = nm(f.name || "");
+  for (const l of t.split(/\n/)) { const i = l.indexOf("="); if (i < 1) continue; const k = nm(l.slice(0, i)), u = l.slice(i + 1).trim(); if (/^https?:\/\//.test(u) && (k === me || k === nm(f.rel || ""))) return u; }
+  return null;
+}
+function openGN(f, page) { const u = gnLink(f); if (!u) return; setStat("GoodNotesを開きます" + (page ? "（p." + page + " は、開いてから移動してください）" : "")); window.open(u, "_blank"); }
+function setVdrive(f) { const b = $("vdrive"); b.style.display = gnLink(f) ? "" : "none"; b.textContent = "GoodNotesで開く"; b.onclick = () => openGN(f, CUR && CUR.n); }
 async function openInDrive(f) {
   try { const id = await resolveDriveId(f); window.open("https://drive.google.com/file/d/" + id + "/view", "_blank"); } catch (e) { setStat(e.message); }
 }
@@ -537,7 +547,7 @@ async function openFile(f, page) {
       if (blob && rcache) idbPut("kv", "rcm:" + f.rel, Object.assign({}, sv, { t: Date.now() })).catch(() => {});
       if (!blob && rcache) await rcDel(f.rel);
       if (blob) {
-        $("viewer").style.display = "flex"; $("vtitle").textContent = f.name; $("vstat").textContent = "読み込み中…"; $("vsave").textContent = saveLabel(f);
+        $("viewer").style.display = "flex"; $("vtitle").textContent = f.name; $("vstat").textContent = "読み込み中…"; $("vsave").textContent = saveLabel(f); setVdrive(f);
         if (!window.pdfjsLib) await loadScript(PDFJS); pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
         const doc = await pdfjsLib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) }).promise;
         if (CUR && CUR.io) CUR.io.disconnect();
@@ -548,7 +558,7 @@ async function openFile(f, page) {
   try {
     await needToken(resume); const id = await resolveDriveId(f);
     if (f.ext !== "pdf") { window.open("https://drive.google.com/file/d/" + id + "/view", "_blank"); return; }
-    $("viewer").style.display = "flex"; $("vtitle").textContent = f.name; $("vstat").textContent = "読み込み中…"; $("vsave").textContent = saveLabel(f);
+    $("viewer").style.display = "flex"; $("vtitle").textContent = f.name; $("vstat").textContent = "読み込み中…"; $("vsave").textContent = saveLabel(f); setVdrive(f);
     if (!window.pdfjsLib) { await loadScript(PDFJS); }
     pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
     const tok = getToken(); const url = API + "files/" + id + "?alt=media"; let doc;
@@ -609,7 +619,7 @@ function setZoom(z) { if (!CUR) return; const n = CUR.n; CUR.zoom = z; buildPage
 
 /* ---------- 設定 ---------- */
 function openSettings() {
-  $("s_cid").value = CFG.clientId; $("s_key").value = CFG.geminiKey; $("s_fold").value = CFG.indexFolder; $("s_rh").value = CFG.rootHosp; $("s_rb").value = CFG.rootBook; $("s_fake").checked = CFG.fake; $("s_hint").value = CFG.loginHint || "";
+  $("s_cid").value = CFG.clientId; $("s_key").value = CFG.geminiKey; $("s_fold").value = CFG.indexFolder; $("s_rh").value = CFG.rootHosp; $("s_rb").value = CFG.rootBook; $("s_fake").checked = CFG.fake; try { $("s_gn").value = localStorage.getItem("hs_gn") || ""; } catch (e) {} $("s_hint").value = CFG.loginHint || "";
   $("s_redir").textContent = redirectUri(); $("settings").style.display = "block"; renderSaved();
 }
 function bind() {
@@ -622,7 +632,7 @@ function bind() {
   ["t2", "ext", "yf", "pn"].forEach(i => $(i).onchange = () => { if ($("q").value) run(); });
   $("setbtn").onclick = openSettings; $("s_close").onclick = () => { $("settings").style.display = "none"; };
   $("s_save").onclick = () => { CFG.clientId = $("s_cid").value.replace(/\s+/g, "");   // 空白・改行は取り除く
-    const okId = /^\d+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$/.test(CFG.clientId); CFG.geminiKey = $("s_key").value.trim(); CFG.indexFolder = $("s_fold").value.trim() || DEF.indexFolder; CFG.rootHosp = $("s_rh").value.trim() || DEF.rootHosp; CFG.rootBook = $("s_rb").value.trim() || DEF.rootBook; CFG.fake = $("s_fake").checked; CFG.loginHint = $("s_hint").value.trim(); saveCfg(); $("settings").style.display = "none"; setStat(CFG.clientId && !okId ? "⚠ Client IDの形がおかしいです（「数字-英数字.apps.googleusercontent.com」の1行）。Google Cloudからコピーし直してください" : "設定を保存しました"); };
+    const okId = /^\d+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$/.test(CFG.clientId); CFG.geminiKey = $("s_key").value.trim(); CFG.indexFolder = $("s_fold").value.trim() || DEF.indexFolder; CFG.rootHosp = $("s_rh").value.trim() || DEF.rootHosp; CFG.rootBook = $("s_rb").value.trim() || DEF.rootBook; CFG.fake = $("s_fake").checked; try { localStorage.setItem("hs_gn", $("s_gn").value); } catch (e) {} CFG.loginHint = $("s_hint").value.trim(); saveCfg(); $("settings").style.display = "none"; setStat(CFG.clientId && !okId ? "⚠ Client IDの形がおかしいです（「数字-英数字.apps.googleusercontent.com」の1行）。Google Cloudからコピーし直してください" : "設定を保存しました"); };
   $("syncbtn").onclick = async () => { try { if (await syncIndex()) { if (await loadIndex()) afterLoad(); } } catch (e) { setStat("取り込み失敗: " + e.message); } };
   $("vclose").onclick = () => { $("viewer").style.display = "none"; if (CUR && CUR.io) CUR.io.disconnect(); $("vpages").innerHTML = ""; CUR = null; };
   $("vprev").onclick = () => CUR && goPage(CUR.n - 1); $("vnext").onclick = () => CUR && goPage(CUR.n + 1);
@@ -632,7 +642,6 @@ function bind() {
   $("vzin").onclick = () => CUR && setZoom(Math.min((CUR.zoom || 1) * 1.25, 4));
   $("vzout").onclick = () => CUR && setZoom(Math.max((CUR.zoom || 1) / 1.25, 0.5));
   $("vsave").onclick = () => CUR && toggleSave(CUR.f, $("vsave"));
-  $("vdrive").onclick = () => CUR && window.open("https://drive.google.com/file/d/" + CUR.id + "/view", "_blank");
 }
 function afterLoad() {
   const c = {}; IX.files.forEach(f => { if (!f.dead) c[f.grp] = (c[f.grp] || 0) + 1; });

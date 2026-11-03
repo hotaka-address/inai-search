@@ -81,6 +81,7 @@ mark{background:var(--hl);color:inherit;border-radius:4px;padding:0 2px}
  <label>ログインに使うGoogleアカウント（任意。別のアカウントで自動ログインされてしまうとき、ここにメールアドレスを入れます）</label><input id="s_hint" type="text" autocomplete="off" placeholder="例: ○○@gmail.com">
  <label>Drive上の索引フォルダ名</label><input id="s_fold" type="text">
  <label>Drive上の資料フォルダ名（院内資料 / 参考書）</label><div class="row"><input id="s_rh" type="text" style="flex:1"><input id="s_rb" type="text" style="flex:1"></div>
+ <label>GoodNotesで開く本（1行に「ファイル名=共有リンク」。例: biochemistry.pdf=https://share.goodnotes.com/s/…。この端末にだけ保存されます）</label><textarea id="s_gn" rows="4" style="width:100%;background:var(--card);color:var(--tx);border:1px solid var(--bd);border-radius:8px;padding:9px 11px;font-size:14px" placeholder="biochemistry.pdf=https://share.goodnotes.com/s/…"></textarea>
  <label><input type="checkbox" id="s_fake"> テスト用（意味検索にダミーを使う）</label>
   <label>保存済みの本（この端末。次回からDriveを使わず即開けます）</label><div id="s_saved"></div>
  <label>Google Cloudに登録する「リダイレクトURI」はこれです:</label><div id="s_redir" style="font-size:12px;word-break:break-all;user-select:all"></div>
