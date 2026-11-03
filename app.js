@@ -422,25 +422,24 @@ async function run() {
   let r; try { r = await search(q, filters()); } catch (e) { setStat("検索エラー: " + e.message); return; }
   setStat(r.total + "件の資料がヒット（上位" + r.results.length + "件）　方式: " + (r.mode === "hybrid" ? "キーワード＋意味検索" : "キーワードのみ" + (r.err ? "（意味検索不可: " + r.err + "）" : "")) + "　" + r.ms + "ms");
   const box = $("res"); box.innerHTML = ""; if (!r.results.length) { box.innerHTML = '<div class="empty">該当なし</div>'; return; }
-  r.results.forEach((x, i) => {
-    const c = document.createElement("div"); c.className = "card";
-    const rk = document.createElement("div"); rk.className = "rk"; rk.textContent = i + 1;
+  r.results.forEach(x => {
+    const c = document.createElement("div"); c.className = "card"; c.dataset.rel = x.file.rel;
+    const open = p => { document.querySelectorAll("#res .card.sel").forEach(e => e.classList.remove("sel")); c.classList.add("sel"); openFile(x.file, p); };
     const m = document.createElement("div"); m.className = "main";
     const t = document.createElement("div"); t.className = "title"; t.textContent = x.file.name;
     const me = document.createElement("div"); me.className = "meta"; const folder = x.file.path.split("/").slice(0, -1).join("/");
-    me.textContent = (x.file.src === SRC_BOOK ? (x.file.grp === GRP_RN ? "📓 " : "📚 参考書 ・ ") : "") + (folder || (x.file.src === SRC_BOOK ? "参考書" : "")) + (x.file.src === SRC_BOOK ? "" : " ・ " + x.file.year + "年頃");
+    me.textContent = (x.file.src === SRC_BOOK ? (x.file.grp === GRP_RN ? "📓 " : "📚 ") : "") + (folder || (x.file.src === SRC_BOOK ? "参考書" : "")) + (x.file.src === SRC_BOOK ? "" : " ・ " + x.file.year + "年頃");
     if (x.file.size) { const sz = document.createElement("span"); sz.className = "sz"; sz.textContent = "　" + fmtSize(x.file.size); me.appendChild(sz); }
     const sn = document.createElement("div"); sn.className = "snip"; hl(sn, x.snip, r.terms);
     const ch = document.createElement("div"); ch.className = "chips";
-    const b = document.createElement("span"); b.className = "chip best"; b.textContent = "最有力: " + x.loc; b.onclick = () => openFile(x.file, x.page); ch.appendChild(b);
-    x.others.forEach(o => { const s = document.createElement("span"); s.className = "chip"; s.textContent = o.loc; s.onclick = () => openFile(x.file, o.page); ch.appendChild(s); });
-    const br = document.createElement("div"); br.className = "bar"; br.innerHTML = "<i style='width:" + x.score + "%'></i>";
-    m.append(t, me, sn, ch, br);
+    const b = document.createElement("span"); b.className = "chip best"; b.textContent = x.loc; b.onclick = e => { e.stopPropagation(); open(x.page); }; ch.appendChild(b);
+    x.others.forEach(o => { const s = document.createElement("span"); s.className = "chip"; s.textContent = o.loc; s.onclick = e => { e.stopPropagation(); open(o.page); }; ch.appendChild(s); });
     const ac = document.createElement("div"); ac.className = "act";
-    const o1 = document.createElement("button"); o1.textContent = "開く"; o1.onclick = () => openFile(x.file, x.page);
-    const o2 = gnLink(x.file) ? document.createElement("button") : null; if (o2) { o2.className = "sub"; o2.textContent = "GoodNotes（p." + (x.page || "-") + "をコピー）"; o2.onclick = () => openGN(x.file, x.page); }
-    ac.append(o1); if (o2) ac.append(o2); if (x.file.ext === "pdf") { const o3 = document.createElement("button"); o3.className = "sub"; o3.textContent = saveLabel(x.file); o3.onclick = () => toggleSave(x.file, o3); ac.append(o3); }
-    c.append(rk, coverEl(x.file, () => openFile(x.file, x.page)), m, ac); box.appendChild(c);
+    if (gnLink(x.file)) { const o2 = document.createElement("button"); o2.className = "sub"; o2.textContent = "GoodNotes" + (x.page ? " p." + x.page : ""); o2.onclick = e => { e.stopPropagation(); openGN(x.file, x.page); }; ac.append(o2); }
+    if (x.file.ext === "pdf") { const o3 = document.createElement("button"); o3.className = "sub"; o3.textContent = saveLabel(x.file); o3.onclick = e => { e.stopPropagation(); toggleSave(x.file, o3); }; ac.append(o3); }
+    m.append(t, me, sn, ch); if (ac.children.length) m.append(ac);
+    c.onclick = () => open(x.page);
+    c.append(coverEl(x.file, () => {}), m); box.appendChild(c);
   });
 }
 
@@ -758,4 +757,5 @@ async function boot() {
   if (resume && resume.q && IX) { $("q").value = resume.q; await run(); if (resume.open && ar === "ok") { const f = IX.files.find(x => x.rel === resume.open.rel && !x.dead); if (f) openFile(f, resume.open.page); } }
 }
 window.addEventListener("load", boot);
+new MutationObserver(() => document.body.classList.toggle("vopen", $("viewer").style.display === "flex")).observe($("viewer"), { attributes: true, attributeFilter: ["style"] });
 window.__hs = { grams, bm25: (q) => bm25(q, new Uint8Array(IX.N).fill(1)), search: (q, f) => search(q, Object.assign({ src: "", top1: "", top2: "", ext: "", year: 0, prefNew: true }, f || {})), get IX() { return IX; }, loadIndex, syncIndex, CFG };
