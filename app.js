@@ -412,8 +412,8 @@ async function run() {
     m.append(t, me, sn, ch, br);
     const ac = document.createElement("div"); ac.className = "act";
     const o1 = document.createElement("button"); o1.textContent = "開く"; o1.onclick = () => openFile(x.file, x.page);
-    const o2 = gnLink(x.file) ? document.createElement("button") : null; if (o2) { o2.className = "sub"; o2.textContent = "GoodNotesで開く"; o2.onclick = () => openGN(x.file, x.page); }
-    ac.append(o1); if (o2) ac.append(o2); if (x.file.ext === "pdf") { const o3 = document.createElement("button"); o3.className = "sub"; o3.textContent = saveLabel(x.file); o3.onclick = () => toggleSave(x.file, o3); ac.append(o3); }
+    const o2 = gnLink(x.file) ? document.createElement("button") : null; if (o2) { o2.className = "sub"; o2.textContent = "GoodNotes（p." + (x.page || "-") + "をコピー）"; o2.onclick = () => openGN(x.file, x.page); }
+    ac.append(o1); if (o2) { ac.append(o2); if (x.page > 0) { const o4 = document.createElement("button"); o4.className = "sub"; o4.textContent = "GoodNotes Webで p." + x.page; o4.onclick = () => openGN(x.file, x.page, true); ac.append(o4); } } if (x.file.ext === "pdf") { const o3 = document.createElement("button"); o3.className = "sub"; o3.textContent = saveLabel(x.file); o3.onclick = () => toggleSave(x.file, o3); ac.append(o3); }
     c.append(rk, coverEl(x.file, () => openFile(x.file, x.page)), m, ac); box.appendChild(c);
   });
 }
@@ -438,11 +438,13 @@ function gnLink(f) {
   for (const l of t.split(/\n/)) { const i = l.indexOf("="); if (i < 1) continue; const k = nm(l.slice(0, i)), u = l.slice(i + 1).trim(); if (/^https?:\/\//.test(u) && (k === me || k === nm(f.rel || ""))) return u; }
   return null;
 }
-function openGN(f, page) {
+function openGN(f, page, web) {
   let u = gnLink(f); if (!u) return;
-  u = u.replace("://share.goodnotes.com/", "://web.goodnotes.com/").replace(/#.*$/, "");   // ページ指定は web.goodnotes.com/s/<ID>#page-<番号> の形
-  if (page > 0) u += "#page-" + page;
-  setStat("GoodNotesを開きます" + (page > 0 ? "（p." + page + "）" : "")); window.open(u, "_blank");
+  u = u.replace("://share.goodnotes.com/", "://web.goodnotes.com/").replace(/#.*$/, "");
+  if (web) { setStat("GoodNotesのWeb表示で開きます" + (page > 0 ? "（p." + page + "）" : "")); window.open(page > 0 ? u + "#page-" + page : u, "_blank"); return; }
+  // アプリで開くときは、ページの指定ができない（アプリが「ページは削除されました」と出す）ため、ページ番号をコピーして、開いてから移動する
+  if (page > 0) { try { navigator.clipboard.writeText(String(page)); } catch (e) {} }
+  setStat("GoodNotesを開きます" + (page > 0 ? "（p." + page + " をコピーしました。開いたあと、ページ番号欄に貼り付けて移動できます）" : "")); window.open(u, "_blank");
 }
 function setVdrive(f) { const b = $("vdrive"); b.style.display = gnLink(f) ? "" : "none"; b.textContent = "GoodNotesで開く"; b.onclick = () => openGN(f, CUR && CUR.n); }
 async function openInDrive(f) {
