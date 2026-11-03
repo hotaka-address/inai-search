@@ -473,7 +473,7 @@ function renderDrawer() {
   if (!FOLDERS.length) { const e = document.createElement("div"); e.className = "dempty"; e.textContent = "まだフォルダがありません。"; box.appendChild(e); }
   FOLDERS.forEach(f => {
     const r = document.createElement("div"); r.className = "drow";
-    const n = document.createElement("div"); n.className = "dname"; n.textContent = "📁 " + f.name; const c = document.createElement("small"); c.textContent = " " + folderCount(f) + "冊"; n.appendChild(c);
+    const n = document.createElement("div"); n.className = "dname"; n.textContent = f.name; const c = document.createElement("small"); c.textContent = " " + folderCount(f) + "冊"; n.appendChild(c);
     n.onclick = () => { $("src").value = "f:" + f.id; markSeg(); openDrawer(false); $("src").onchange(); };
     const ed = document.createElement("button"); ed.className = "sub"; ed.textContent = "編集"; ed.onclick = () => openEditor(f);
     const de = document.createElement("button"); de.className = "sub"; de.textContent = "削除"; de.onclick = () => { if (!confirm("フォルダ「" + f.name + "」を削除しますか？（本そのものは消えません）")) return; DELETED[f.id] = Date.now(); FOLDERS = FOLDERS.filter(x => x.id !== f.id); saveFolders(); syncFolders(false); renderSeg(); renderDrawer(); $("src").onchange(); };
