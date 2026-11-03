@@ -422,6 +422,11 @@ function tree() {
   const s = $("src").value, m = {}; IX.files.forEach(f => { if (f.dead || !inScope(f, s)) return; const a = f.top1 || "(直下)", b = f.top2 || "(直下)"; m[a] = m[a] || {}; m[a][b] = (m[a][b] || 0) + 1; }); return m;
 }
 function fillT1() { const t = $("t1"); t.innerHTML = '<option value="">すべての分類</option>'; Object.keys(tree()).sort().forEach(k => { const o = document.createElement("option"); o.value = o.textContent = k; t.appendChild(o); }); $("t2").innerHTML = '<option value="">すべての科/種別</option>'; }
+function updFBadge() {   // 絞り込みを閉じていても、使っている条件の数が分かるようにする
+  const n = [$("t1").value, $("t2").value, $("ext").value, +$("yf").value ? 1 : 0, $("pn").checked ? 0 : 1].filter(Boolean).length;
+  const open = $("filters").classList.contains("open"); const b = $("ftoggle");
+  b.textContent = "絞り込み" + (n ? "（" + n + "件適用中）" : "") + (open ? " ▴" : " ▾"); b.classList.toggle("on", n > 0);
+}
 function filters() { return { src: $("src").value, top1: $("t1").value, top2: $("t2").value, ext: $("ext").value, year: +$("yf").value, prefNew: $("pn").checked }; }
 async function run() {
   const q = $("q").value.trim(); if (!q || !IX) return; setStat("検索中…");
@@ -757,11 +762,13 @@ function openSettings() {
 function bind() {
   $("go").onclick = run; $("q").addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) run(); });
   $("src").onchange = () => { fillT1(); if ($("q").value) run(); };
+  $("ftoggle").onclick = () => { $("filters").classList.toggle("open"); updFBadge(); };
   $("dkeysave").onclick = () => { CFG.folderKey = $("dkey").value.trim(); saveCfg(); $("dmsg").textContent = "同期中…"; syncFolders(true); };
   $("fchead").onclick = () => openEditor(null); $("dshelf").onclick = () => openShelf(true); $("sclose").onclick = () => openShelf(false); $("sq").oninput = filterShelf; $("snl").onchange = filterShelf; $("srn").onchange = buildShelf;
   loadFolders(); renderSeg(); $("menubtn").onclick = () => openDrawer(true); $("dscrim").onclick = () => openDrawer(false); $("dnew").onclick = () => openEditor(null); $("fcancel").onclick = closeEditor; $("fsave").onclick = saveEditor;
   $("fq").oninput = filterEditor; $("frn").onchange = buildEditorList; $("fall").onclick = () => selAll(true); $("fnone").onclick = () => selAll(false);
   $("t1").onchange = () => { const t = $("t2"); t.innerHTML = '<option value="">すべての科/種別</option>'; const m = tree()[$("t1").value] || {}; Object.keys(m).sort().forEach(k => { const o = document.createElement("option"); o.value = k; o.textContent = k + " (" + m[k] + ")"; t.appendChild(o); }); if ($("q").value) run(); };
+  ["t1", "t2", "ext", "yf", "pn"].forEach(i => $(i).addEventListener("change", updFBadge));
   ["t2", "ext", "yf", "pn"].forEach(i => $(i).onchange = () => { if ($("q").value) run(); });
   $("setbtn").onclick = openSettings; $("s_close").onclick = () => { $("settings").style.display = "none"; };
   $("s_save").onclick = () => { CFG.clientId = $("s_cid").value.replace(/\s+/g, "");   // 空白・改行は取り除く

@@ -131,6 +131,9 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}body{touch-action:manip
  #vsearch{padding:5px 10px;font-size:12px}
  .sname{font-size:14px}.smeta{font-size:11px}
 }
+#fbar{margin:4px 0 2px}#ftoggle{padding:6px 14px;font-size:13px;border-radius:10px}#ftoggle.on{color:var(--ac);border-color:var(--ac)}
+#filters{display:none !important}#filters.open{display:flex !important}
+@media (max-width:600px){#filters.open{display:grid !important}}
 </style></head><body>
 <div id="dscrim"></div>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><symbol id="ico-folder-c" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15a3 3 0 0 1 3-3h9l3.5 4H39a3 3 0 0 1 3 3v16a3 3 0 0 1-3 3H9a3 3 0 0 1-3-3z"/><path d="M28 12v10l3.5-2.5L35 22V12" stroke-width="1.8" style="stroke:var(--ac);fill:var(--tile)"/></symbol>
@@ -154,7 +157,8 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}body{touch-action:manip
 <h1><button class="sub" id="menubtn" aria-label="メニュー"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button><span class="ttl"><span class="ttlmain">文献検索<i class="dot"></i></span><span class="ttlsub">LITERATURE SEARCH</span></span><small id="info"></small><span style="flex:1"></span><button class="sub" id="syncbtn">索引を更新</button><button class="sub" id="setbtn">設定</button></h1>
 <div class="row"><input id="q" type="text" placeholder="例：急性膵炎の治療　/　膵炎 経腸栄養 いつから" autofocus><button id="go">検索</button></div>
 <div id="seg"></div>
-<div class="row filters">
+<div id="fbar"><button class="sub" id="ftoggle">絞り込み ▾</button></div>
+<div class="row filters" id="filters">
  <select id="src"><option value="">すべて</option><option value="院内資料">院内資料</option><option value="雑誌">雑誌</option><option value="参考書">参考書</option></select>
  <select id="t1"><option value="">すべての分類</option></select>
  <select id="t2"><option value="">すべての科/種別</option></select>
