@@ -181,17 +181,6 @@ async function toggleSave(f, btn) {
   catch (e) { setStat("保存できません: " + (e && e.name === "QuotaExceededError" ? "端末の空き容量が足りません" : (e && e.message) || e)); }
   btn.disabled = false; btn.textContent = saveLabel(f);
 }
-async function renderSaved() {
-  const box = $("s_saved"); box.innerHTML = ""; const L = [...SAVED.values()].sort((a, b) => b.t - a.t); let tot = 0;
-  L.forEach(m => { tot += m.size; const r = document.createElement("div"); r.className = "row"; r.style.cssText = "justify-content:space-between;font-size:13px;margin:4px 0";
-    const sp = document.createElement("span"); sp.style.cssText = "flex:1;word-break:break-all"; sp.textContent = m.name + "（" + Math.round(m.size / 1e6) + "MB）";
-    const b = document.createElement("button"); b.className = "sub"; b.textContent = "削除"; b.onclick = async () => { await unsavePdf(m.rel); renderSaved(); }; r.append(sp, b); box.appendChild(r); });
-  let est = ""; try { const e = await navigator.storage.estimate(); est = "　端末の使用量 " + Math.round(e.usage / 1e6) + "MB（上限の目安 " + (Math.round(e.quota / 1e8) / 10) + "GB）"; } catch (e) {}
-  const h = document.createElement("div"); h.style.cssText = "font-size:12px;color:var(--mu)"; h.textContent = (L.length ? "保存済み " + L.length + "冊・合計 " + Math.round(tot / 1e6) + "MB" : "まだ保存した本はありません（検索結果の「📥 保存」で保存できます）") + est; box.prepend(h);
-  try { const R = await rcList(); const rt = R.reduce((a, m) => a + m.size, 0); const d = document.createElement("div"); d.className = "row"; d.style.cssText = "justify-content:space-between;font-size:12px;color:var(--mu);margin-top:8px";
-    const sp = document.createElement("span"); sp.textContent = "最近開いた本の自動保存 " + R.length + "冊・" + Math.round(rt / 1e6) + "MB（上限1.2GB・7日で自動削除）";
-    const b = document.createElement("button"); b.className = "sub"; b.textContent = "全部消す"; b.onclick = async () => { for (const m of R) await rcDel(m.rel); renderSaved(); }; d.append(sp, b); box.appendChild(d); } catch (e) {}
-}
 const pathCache = new Map();
 async function resolveDriveId(f) {
   const key = f.rel; if (pathCache.has(key)) return pathCache.get(key);
@@ -474,10 +463,9 @@ function renderDrawer() {
   FOLDERS.forEach(f => {
     const r = document.createElement("div"); r.className = "drow";
     const n = document.createElement("div"); n.className = "dname"; n.textContent = f.name; const c = document.createElement("small"); c.textContent = " " + folderCount(f) + "冊"; n.appendChild(c);
-    n.onclick = () => { $("src").value = "f:" + f.id; markSeg(); openDrawer(false); $("src").onchange(); };
-    const ed = document.createElement("button"); ed.className = "sub"; ed.textContent = "編集"; ed.onclick = () => openEditor(f);
-    const de = document.createElement("button"); de.className = "sub"; de.textContent = "削除"; de.onclick = () => { if (!confirm("フォルダ「" + f.name + "」を削除しますか？（本そのものは消えません）")) return; DELETED[f.id] = Date.now(); FOLDERS = FOLDERS.filter(x => x.id !== f.id); saveFolders(); syncFolders(false); renderSeg(); renderDrawer(); $("src").onchange(); };
-    r.append(n, ed, de); box.appendChild(r);
+    n.onclick = () => openEditor(f);
+        const de = document.createElement("button"); de.className = "sub"; de.textContent = "削除"; de.onclick = () => { if (!confirm("フォルダ「" + f.name + "」を削除しますか？（本そのものは消えません）")) return; DELETED[f.id] = Date.now(); FOLDERS = FOLDERS.filter(x => x.id !== f.id); saveFolders(); syncFolders(false); renderSeg(); renderDrawer(); $("src").onchange(); };
+    r.append(n, de); box.appendChild(r);
   });
 }
 /* PCとの共有: Drive直下に「院内検索_マイフォルダ_<共有名>_ipad.json」を書き、PCが書く「…_mac.json」を読む（共有名が同じ端末どうしだけ共有される） */
@@ -679,8 +667,8 @@ function setZoom(z) { if (!CUR) return; const n = CUR.n; CUR.zoom = z; buildPage
 
 /* ---------- 設定 ---------- */
 function openSettings() {
-  $("s_cid").value = CFG.clientId; $("s_key").value = CFG.geminiKey; $("s_fold").value = CFG.indexFolder; $("s_rh").value = CFG.rootHosp; $("s_rb").value = CFG.rootBook; $("s_fake").checked = CFG.fake; try { $("s_gn").value = localStorage.getItem("hs_gn") || ""; } catch (e) {} $("s_hint").value = CFG.loginHint || "";
-  $("s_redir").textContent = redirectUri(); $("settings").style.display = "block"; renderSaved();
+  $("s_cid").value = CFG.clientId; $("s_key").value = CFG.geminiKey; $("s_fold").value = CFG.indexFolder; $("s_rh").value = CFG.rootHosp; $("s_rb").value = CFG.rootBook; $("s_fake").checked = CFG.fake; $("s_hint").value = CFG.loginHint || "";
+  $("s_redir").textContent = redirectUri(); $("settings").style.display = "block";
 }
 function bind() {
   $("go").onclick = run; $("q").addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) run(); });
@@ -693,7 +681,7 @@ function bind() {
   ["t2", "ext", "yf", "pn"].forEach(i => $(i).onchange = () => { if ($("q").value) run(); });
   $("setbtn").onclick = openSettings; $("s_close").onclick = () => { $("settings").style.display = "none"; };
   $("s_save").onclick = () => { CFG.clientId = $("s_cid").value.replace(/\s+/g, "");   // 空白・改行は取り除く
-    const okId = /^\d+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$/.test(CFG.clientId); CFG.geminiKey = $("s_key").value.trim(); CFG.indexFolder = $("s_fold").value.trim() || DEF.indexFolder; CFG.rootHosp = $("s_rh").value.trim() || DEF.rootHosp; CFG.rootBook = $("s_rb").value.trim() || DEF.rootBook; CFG.fake = $("s_fake").checked; try { localStorage.setItem("hs_gn", $("s_gn").value); } catch (e) {} CFG.loginHint = $("s_hint").value.trim(); saveCfg(); $("settings").style.display = "none"; setStat(CFG.clientId && !okId ? "⚠ Client IDの形がおかしいです（「数字-英数字.apps.googleusercontent.com」の1行）。Google Cloudからコピーし直してください" : "設定を保存しました"); };
+    const okId = /^\d+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$/.test(CFG.clientId); CFG.geminiKey = $("s_key").value.trim(); CFG.indexFolder = $("s_fold").value.trim() || DEF.indexFolder; CFG.rootHosp = $("s_rh").value.trim() || DEF.rootHosp; CFG.rootBook = $("s_rb").value.trim() || DEF.rootBook; CFG.fake = $("s_fake").checked; CFG.loginHint = $("s_hint").value.trim(); saveCfg(); $("settings").style.display = "none"; setStat(CFG.clientId && !okId ? "⚠ Client IDの形がおかしいです（「数字-英数字.apps.googleusercontent.com」の1行）。Google Cloudからコピーし直してください" : "設定を保存しました"); };
   $("syncbtn").onclick = async () => { try { if (await syncIndex()) { if (await loadIndex()) afterLoad(); } } catch (e) { setStat("取り込み失敗: " + e.message); } };
   $("vclose").onclick = () => { $("viewer").style.display = "none"; if (CUR && CUR.io) CUR.io.disconnect(); $("vpages").innerHTML = ""; CUR = null; };
   $("vprev").onclick = () => CUR && goPage(CUR.n - 1); $("vnext").onclick = () => CUR && goPage(CUR.n + 1);
