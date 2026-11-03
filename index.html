@@ -51,11 +51,21 @@ mark{background:var(--hl);color:inherit;border-radius:4px;padding:0 2px}
 #flist{flex:1;overflow:auto;padding:0 12px;-webkit-overflow-scrolling:touch}
 .frow{display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--bd)}.frow input{width:22px;height:22px;flex:none}.ft{flex:1;word-break:break-all;font-size:14px}
 .fcv{width:30px;height:40px;object-fit:cover;border-radius:3px;border:1px solid var(--bd);flex:none}.fcv0{width:30px;height:40px;border:1px dashed var(--bd);border-radius:3px;flex:none}
+#shelf{display:none;position:fixed;inset:0;background:var(--bg);z-index:15;flex-direction:column}
+#shead{display:flex;gap:8px;align-items:center;padding:10px 12px;padding-top:max(10px,env(safe-area-inset-top));border-bottom:1px solid var(--bd);background:var(--card)}
+#stools{padding:10px 12px;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--bd)}
+#slist{flex:1;overflow:auto;padding:0 12px;-webkit-overflow-scrolling:touch}
+.srow{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--bd)}.smain{flex:1;min-width:0}.sname{font-weight:600;word-break:break-all}.smeta{font-size:12px;color:var(--mu);margin:2px 0 6px}
+.sgn{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px}.sbtns{display:flex;gap:6px;flex-wrap:wrap}.sok{font-size:12px;color:var(--mu)}
+.srow .fcv,.srow .fcv0{width:44px;height:60px}
 </style></head><body>
 <div id="dscrim"></div>
-<div id="drawer"><h2>マイフォルダ</h2><p class="dhint">よく使う本だけを選んで、検索の範囲にできます。</p><div id="dlist"></div><button id="dnew">＋ フォルダを作る</button>
+<div id="drawer"><h2>マイフォルダ</h2><button class="sub" id="dshelf" style="width:100%;margin-bottom:14px;padding:10px">📚 本棚（本の一覧・GoodNotesリンク）</button><p class="dhint">よく使う本だけを選んで、検索の範囲にできます。</p><div id="dlist"></div><button id="dnew">＋ フォルダを作る</button>
 <div style="margin-top:22px;border-top:1px solid var(--bd);padding-top:12px"><div class="dhint" style="margin:0 0 6px">PCと共有する（Google Drive経由）。PCとiPadで<b>同じ共有名</b>を入れます。空にすると共有しません。</div>
 <input id="dkey" type="text" placeholder="共有名（例：hota）" style="width:100%"><button class="sub" id="dkeysave" style="margin-top:6px;width:100%">保存して同期</button><div id="dmsg" style="font-size:12px;color:var(--mu);margin-top:6px"></div></div></div>
+<div id="shelf"><div id="shead"><button class="sub" id="sclose">閉じる</button><div style="flex:1;text-align:center;font-weight:600">📚 本棚</div><span id="scount" style="font-size:12px;color:var(--mu)"></span></div>
+<div id="stools"><input id="sq" type="text" placeholder="本を検索（書名・フォルダ名）"><div class="row" style="font-size:13px"><label style="display:flex;gap:5px;align-items:center"><input type="checkbox" id="snl">リンク未登録だけ</label><label style="display:flex;gap:5px;align-items:center"><input type="checkbox" id="srn">雑誌も表示</label></div></div>
+<div id="slist"></div></div>
 <div id="fed"><div id="fhead"><button class="sub" id="fcancel">キャンセル</button><div id="ftitle">フォルダを作る</div><button id="fsave">保存</button></div>
 <div id="ftools"><input id="fname" type="text" placeholder="フォルダ名（例：当直で使う本）"><input id="fq" type="text" placeholder="本を絞り込む">
 <div class="row"><button class="sub" id="fall">表示中を全部選択</button><button class="sub" id="fnone">表示中を全部解除</button><label style="font-size:13px;display:flex;gap:5px;align-items:center"><input type="checkbox" id="frn">雑誌も表示</label><span id="fcount" style="font-size:13px;color:var(--mu);margin-left:auto"></span></div></div>
