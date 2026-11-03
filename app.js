@@ -401,7 +401,7 @@ async function runVSearch() {
   const h = document.createElement("div"); h.className = "vhint"; h.textContent = r.results.length + "か所（" + (r.mode === "hybrid" ? "キーワード＋意味検索" : "キーワードのみ") + "）　タップでそのページへ"; box.appendChild(h);
   r.results.forEach(x => {
     const row = document.createElement("div"); row.className = "vrow"; const b = document.createElement("b"); b.textContent = x.loc; const sn = document.createElement("div"); hl(sn, x.snip, r.terms);
-    row.append(b, sn); if (x.page > 0) row.onclick = () => { goPage(x.page); $("vsp").classList.remove("open"); }; box.appendChild(row);
+    row.append(b, sn); if (x.page > 0) row.onclick = () => { goPage(x.page); if (window.innerWidth < 700) $("vsp").classList.remove("open"); }; box.appendChild(row);
   });
 }
 /* ---------- 画面 ---------- */
@@ -422,24 +422,29 @@ async function run() {
   let r; try { r = await search(q, filters()); } catch (e) { setStat("検索エラー: " + e.message); return; }
   setStat(r.total + "件の資料がヒット（上位" + r.results.length + "件）　方式: " + (r.mode === "hybrid" ? "キーワード＋意味検索" : "キーワードのみ" + (r.err ? "（意味検索不可: " + r.err + "）" : "")) + "　" + r.ms + "ms");
   const box = $("res"); box.innerHTML = ""; if (!r.results.length) { box.innerHTML = '<div class="empty">該当なし</div>'; return; }
-  r.results.forEach(x => {
+  const wide = () => window.matchMedia("(min-width:900px)").matches;
+  r.results.forEach((x, i) => {
     const c = document.createElement("div"); c.className = "card"; c.dataset.rel = x.file.rel;
-    const open = p => { document.querySelectorAll("#res .card.sel").forEach(e => e.classList.remove("sel")); c.classList.add("sel"); openFile(x.file, p); };
+    const cands = []; [{ page: x.page, loc: x.loc }, ...x.others].forEach(o => { if (o.page > 0 && !cands.some(k => k.page === o.page)) cands.push(o); });
+    const open = p => { document.querySelectorAll("#res .card.sel").forEach(e => e.classList.remove("sel")); c.classList.add("sel"); openFile(x.file, p, { cands, overlay: false }); };
+    const rk = document.createElement("div"); rk.className = "rk"; rk.textContent = i + 1;
     const m = document.createElement("div"); m.className = "main";
     const t = document.createElement("div"); t.className = "title"; t.textContent = x.file.name;
     const me = document.createElement("div"); me.className = "meta"; const folder = x.file.path.split("/").slice(0, -1).join("/");
-    me.textContent = (x.file.src === SRC_BOOK ? (x.file.grp === GRP_RN ? "📓 " : "📚 ") : "") + (folder || (x.file.src === SRC_BOOK ? "参考書" : "")) + (x.file.src === SRC_BOOK ? "" : " ・ " + x.file.year + "年頃");
+    me.textContent = (x.file.src === SRC_BOOK ? (x.file.grp === GRP_RN ? "📓 " : "📚 参考書 ・ ") : "") + (folder || (x.file.src === SRC_BOOK ? "参考書" : "")) + (x.file.src === SRC_BOOK ? "" : " ・ " + x.file.year + "年頃");
     if (x.file.size) { const sz = document.createElement("span"); sz.className = "sz"; sz.textContent = "　" + fmtSize(x.file.size); me.appendChild(sz); }
     const sn = document.createElement("div"); sn.className = "snip"; hl(sn, x.snip, r.terms);
     const ch = document.createElement("div"); ch.className = "chips";
-    const b = document.createElement("span"); b.className = "chip best"; b.textContent = x.loc; b.onclick = e => { e.stopPropagation(); open(x.page); }; ch.appendChild(b);
+    const b = document.createElement("span"); b.className = "chip best"; b.textContent = "最有力: " + x.loc; b.onclick = e => { e.stopPropagation(); open(x.page); }; ch.appendChild(b);
     x.others.forEach(o => { const s = document.createElement("span"); s.className = "chip"; s.textContent = o.loc; s.onclick = e => { e.stopPropagation(); open(o.page); }; ch.appendChild(s); });
+    m.append(t, me, sn, ch);
     const ac = document.createElement("div"); ac.className = "act";
-    if (gnLink(x.file)) { const o2 = document.createElement("button"); o2.className = "sub"; o2.textContent = "GoodNotes" + (x.page ? " p." + x.page : ""); o2.onclick = e => { e.stopPropagation(); openGN(x.file, x.page); }; ac.append(o2); }
+    const o1 = document.createElement("button"); o1.textContent = "開く"; o1.onclick = e => { e.stopPropagation(); open(x.page); };
+    ac.append(o1);
+    if (gnLink(x.file)) { const o2 = document.createElement("button"); o2.className = "sub"; o2.textContent = "GoodNotes（p." + (x.page || "-") + "をコピー）"; o2.onclick = e => { e.stopPropagation(); openGN(x.file, x.page); }; ac.append(o2); }
     if (x.file.ext === "pdf") { const o3 = document.createElement("button"); o3.className = "sub"; o3.textContent = saveLabel(x.file); o3.onclick = e => { e.stopPropagation(); toggleSave(x.file, o3); }; ac.append(o3); }
-    m.append(t, me, sn, ch); if (ac.children.length) m.append(ac);
-    c.onclick = () => open(x.page);
-    c.append(coverEl(x.file, () => {}), m); box.appendChild(c);
+    c.onclick = () => { if (wide()) open(x.page); };   // 横向き(広い画面)はカード全体をタップで開く。縦向きは従来どおり
+    c.append(rk, coverEl(x.file, () => { if (!wide()) open(x.page); }), m, ac); box.appendChild(c);
   });
 }
 
@@ -547,7 +552,7 @@ const SHELF_OPEN = new Set();
 async function askOpen(f) {   // 保存されていない本は、容量を見せて確認してから開く（読み込みに時間がかかるため）
   let cached = !!SAVED.get(f.rel); if (!cached && f.ext === "pdf") { try { cached = !!(await idbGet("kv", "rcm:" + f.rel)); } catch (e) {} }
   if (!cached && f.ext === "pdf" && !confirm("「" + f.name + "」を開きます。\n\n容量: " + (f.size ? fmtSize(f.size) : "不明") + "\n\nこの端末に保存されていないため、読み込みに時間がかかります。開きますか？")) return;
-  openFile(f, 1);
+  openFile(f, 1, { overlay: true });
 }
 function shelfBooks() { return IX.files.filter(x => !x.dead && x.src === SRC_BOOK && (!isMag(x) || $("srn").checked)).sort(natCmp); }
 function buildShelf() {
@@ -631,7 +636,10 @@ function saveEditor() {
 
 let PDFLIB = null, CUR = null;
 function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = () => rej(new Error("pdf.jsを読み込めません（ネット接続を確認）")); document.head.appendChild(s); }); }
-async function openFile(f, page) {
+let OPEN_OPTS = {};
+function setViewerMode(o) { document.body.classList.toggle("vover", !!o.overlay || window.innerWidth < 900); }
+async function openFile(f, page, opts) {
+  opts = opts || {}; OPEN_OPTS = opts; setViewerMode(opts);
   const resume = { q: $("q").value, open: { rel: f.rel, page } };
   let sv = f.ext === "pdf" && SAVED.get(f.rel), rcache = false;
   if (!sv && f.ext === "pdf") { const m = await idbGet("kv", "rcm:" + f.rel).catch(() => null); if (m) { sv = m; rcache = true; } }
@@ -645,7 +653,7 @@ async function openFile(f, page) {
         if (!window.pdfjsLib) await loadScript(PDFJS); pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
         const doc = await pdfjsLib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) }).promise;
         if (CUR && CUR.io) CUR.io.disconnect();
-        CUR = { doc, f, id: sv.id, zoom: 1 }; await buildPages(Math.min(Math.max(page || 1, 1), doc.numPages)); return;
+        CUR = { doc, f, id: sv.id, zoom: 1, cands: opts.cands }; await buildPages(Math.min(Math.max(page || 1, 1), doc.numPages)); return;
       }
     } catch (e) { $("viewer").style.display = "none"; setStat("保存データを開けませんでした。Driveから開きます: " + e.message); }
   }
@@ -663,11 +671,17 @@ async function openFile(f, page) {
       doc = await pdfjsLib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) }).promise;
     }
     if (CUR && CUR.io) CUR.io.disconnect();
-    CUR = { doc, f, id, zoom: 1 }; rcFetch(f, id); await buildPages(Math.min(Math.max(page || 1, 1), doc.numPages));
+    CUR = { doc, f, id, zoom: 1, cands: opts.cands }; rcFetch(f, id); await buildPages(Math.min(Math.max(page || 1, 1), doc.numPages));
   } catch (e) { $("vstat").textContent = "開けません: " + e.message; setStat("開けません: " + e.message); }
 }
 /* 連続スクロール表示: 全ページ分の枠を作り、画面の近くのページだけ描画する */
+function renderCands() {
+  const box = $("vcands"); box.innerHTML = ""; const L = (CUR && CUR.cands || []).filter(k => k.page > 0); if (L.length < 2) return;
+  const lb = document.createElement("span"); lb.className = "vcl"; lb.textContent = "候補"; box.appendChild(lb);
+  L.forEach((k, i) => { const b = document.createElement("button"); b.className = "vc"; b.dataset.p = k.page; b.textContent = (i === 0 ? "★" : "") + "p." + k.page; b.onclick = () => goPage(k.page); box.appendChild(b); });
+}
 async function buildPages(n) {
+  renderCands();
   const box = $("vbody"), wrap = $("vpages"), doc = CUR.doc; wrap.innerHTML = "";
   const p1 = await doc.getPage(1), v1 = p1.getViewport({ scale: 1 });
   const cssW = Math.max(120, (box.clientWidth - 8) * (CUR.zoom || 1)); CUR.cssW = cssW;
@@ -702,7 +716,7 @@ function curPageFromScroll() {
   const box = $("vbody"), y = box.scrollTop + box.clientHeight * 0.3, P = CUR.pgs; let lo = 0, hi = P.length - 1;
   while (lo < hi) { const m = (lo + hi + 1) >> 1; if (P[m].offsetTop <= y) lo = m; else hi = m - 1; } return lo + 1;
 }
-function showPos() { $("vpage").value = CUR.n; $("vstat").textContent = CUR.n + " / " + CUR.doc.numPages; }
+function showPos() { document.querySelectorAll("#vcands .vc").forEach(b => b.classList.toggle("on", +b.dataset.p === CUR.n)); $("vpage").value = CUR.n; $("vstat").textContent = CUR.n + " / " + CUR.doc.numPages; }
 let scrollT = 0;
 function onVScroll() {
   if (!CUR || !CUR.pgs) return; if (CUR.setting) { CUR.setting = 0; return; }
@@ -729,8 +743,8 @@ function bind() {
   $("s_save").onclick = () => { CFG.clientId = $("s_cid").value.replace(/\s+/g, "");   // 空白・改行は取り除く
     const okId = /^\d+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$/.test(CFG.clientId); CFG.geminiKey = $("s_key").value.trim(); CFG.indexFolder = $("s_fold").value.trim() || DEF.indexFolder; CFG.rootHosp = $("s_rh").value.trim() || DEF.rootHosp; CFG.rootBook = $("s_rb").value.trim() || DEF.rootBook; CFG.fake = $("s_fake").checked; CFG.loginHint = $("s_hint").value.trim(); saveCfg(); $("settings").style.display = "none"; setStat(CFG.clientId && !okId ? "⚠ Client IDの形がおかしいです（「数字-英数字.apps.googleusercontent.com」の1行）。Google Cloudからコピーし直してください" : "設定を保存しました"); };
   $("syncbtn").onclick = async () => { try { if (await syncIndex()) { if (await loadIndex()) afterLoad(); } } catch (e) { setStat("取り込み失敗: " + e.message); } };
-  $("vsearch").onclick = () => { const p = $("vsp"); p.classList.toggle("open"); if (p.classList.contains("open")) $("vq").focus(); }; $("vqgo").onclick = runVSearch; $("vq").addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) runVSearch(); });
-  $("vclose").onclick = () => { $("vsp").classList.remove("open"); $("vres").innerHTML = ""; $("viewer").style.display = "none"; if (CUR && CUR.io) CUR.io.disconnect(); $("vpages").innerHTML = ""; CUR = null; };
+  $("vsearch").onclick = () => { const p = $("vsp"); p.classList.toggle("open"); if (p.classList.contains("open")) $("vq").focus(); if (CUR && window.innerWidth >= 700) setTimeout(() => CUR && buildPages(CUR.n), 60); }; $("vqgo").onclick = runVSearch; $("vq").addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) runVSearch(); });
+  $("vclose").onclick = () => { $("vsp").classList.remove("open"); $("vres").innerHTML = ""; document.body.classList.remove("vover"); $("viewer").style.display = "none"; if (CUR && CUR.io) CUR.io.disconnect(); $("vpages").innerHTML = ""; CUR = null; };
   $("vprev").onclick = () => CUR && goPage(CUR.n - 1); $("vnext").onclick = () => CUR && goPage(CUR.n + 1);
   $("vbody").addEventListener("scroll", onVScroll, { passive: true }); $("vbody").addEventListener("touchstart", () => { if (CUR) CUR.align = 0; }, { passive: true });
   let rz = 0; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { if (CUR && CUR.pgs && $("viewer").style.display !== "none") buildPages(CUR.n); }, 400); });
