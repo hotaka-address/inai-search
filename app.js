@@ -518,6 +518,11 @@ function gnSet(f, url) { const arr = gnEntries().filter(e => gnNm(e.k) !== gnNm(
 function openShelf(on) { $("shelf").style.display = on ? "flex" : "none"; if (on) { openDrawer(false); buildShelf(); } }
 const natCmp = (a, b) => a.name.localeCompare(b.name, "ja", { numeric: true });
 const SHELF_OPEN = new Set();
+async function askOpen(f) {   // 保存されていない本は、容量を見せて確認してから開く（読み込みに時間がかかるため）
+  let cached = !!SAVED.get(f.rel); if (!cached && f.ext === "pdf") { try { cached = !!(await idbGet("kv", "rcm:" + f.rel)); } catch (e) {} }
+  if (!cached && f.ext === "pdf" && !confirm("「" + f.name + "」を開きます。\n\n容量: " + (f.size ? fmtSize(f.size) : "不明") + "\n\nこの端末に保存されていないため、読み込みに時間がかかります。開きますか？")) return;
+  openFile(f, 1);
+}
 function shelfBooks() { return IX.files.filter(x => !x.dead && x.src === SRC_BOOK && (!isMag(x) || $("srn").checked)).sort(natCmp); }
 function buildShelf() {
   const box = $("slist"); box.innerHTML = ""; if (!IX) { box.textContent = "先に索引を取り込んでください。"; return; }
@@ -525,15 +530,19 @@ function buildShelf() {
   all.forEach(f => { if (f.parentRel) { if (!kids.has(f.parentRel)) kids.set(f.parentRel, []); kids.get(f.parentRel).push(f); } });
   const mk = (f, child) => {
     const r = document.createElement("div"); r.className = "srow" + (child ? " schild" : ""); r.dataset.t = norm(f.name + " " + f.path); r.dataset.rel = f.rel; if (child) r.dataset.p = f.parentRel;
-    const cv = coverEl(f, () => openFile(f, 1)); cv.className = cv.tagName === "IMG" ? "fcv" : "fcv0"; if (cv.tagName !== "IMG") cv.textContent = "";
+    const cv = coverEl(f, () => askOpen(f)); cv.className = cv.tagName === "IMG" ? "fcv" : "fcv0"; if (cv.tagName !== "IMG") cv.textContent = "";
     const m = document.createElement("div"); m.className = "smain";
     const t = document.createElement("div"); t.className = "sname"; const nk = (kids.get(f.rel) || []).length;
-    t.textContent = (nk ? (SHELF_OPEN.has(f.rel) ? "▼ " : "▶ ") : "") + (isMag(f) ? "📓 " : "") + f.name;
-    const me = document.createElement("div"); me.className = "smeta"; me.textContent = (nk ? "章別 " + nk + "件（タップで開く）　" : "") + (f.size ? fmtSize(f.size).replace(/（.*$/, "") : "");
-    if (nk) { m.style.cursor = "pointer"; m.onclick = () => { SHELF_OPEN.has(f.rel) ? SHELF_OPEN.delete(f.rel) : SHELF_OPEN.add(f.rel); t.textContent = (SHELF_OPEN.has(f.rel) ? "▼ " : "▶ ") + (isMag(f) ? "📓 " : "") + f.name; filterShelf(); }; }
+    const chev = document.createElement("span"), tt = document.createElement("span"); tt.textContent = (isMag(f) ? "📓 " : "") + f.name; tt.style.cursor = "pointer"; tt.onclick = () => askOpen(f);
+    const me = document.createElement("div"); me.className = "smeta"; me.textContent = (nk ? "章別 " + nk + "件（タップで展開）　" : "") + (f.size ? fmtSize(f.size).replace(/（.*$/, "") : "");
+    if (nk) {
+      const tg = () => { SHELF_OPEN.has(f.rel) ? SHELF_OPEN.delete(f.rel) : SHELF_OPEN.add(f.rel); chev.textContent = SHELF_OPEN.has(f.rel) ? "▼ " : "▶ "; filterShelf(); };
+      chev.textContent = SHELF_OPEN.has(f.rel) ? "▼ " : "▶ "; chev.style.cssText = "cursor:pointer;display:inline-block;padding:4px 6px 4px 0"; chev.onclick = tg; me.style.cursor = "pointer"; me.onclick = tg;
+    }
+    t.append(chev, tt);
     const gl = document.createElement("div"); gl.className = "sgn"; const ed = document.createElement("div"); ed.className = "sedit";
     const btns = document.createElement("div"); btns.className = "sbtns"; const right = document.createElement("div"); right.className = "sright";
-    const b1 = document.createElement("button"); b1.className = "sub"; b1.textContent = "開く"; b1.onclick = () => openFile(f, 1);
+    const b1 = document.createElement("button"); b1.className = "sub"; b1.textContent = "開く"; b1.onclick = () => askOpen(f);
     btns.append(b1);
     if (f.ext === "pdf") { const b2 = document.createElement("button"); b2.className = "sub"; b2.textContent = saveLabel(f); b2.onclick = () => toggleSave(f, b2); btns.append(b2); }
     const draw = () => {
