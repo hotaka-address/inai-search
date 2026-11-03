@@ -765,7 +765,7 @@ function bind() {
   $("ftoggle").onclick = () => { $("filters").classList.toggle("open"); updFBadge(); };
   $("dkeysave").onclick = () => { CFG.folderKey = $("dkey").value.trim(); saveCfg(); $("dmsg").textContent = "同期中…"; syncFolders(true); };
   $("fchead").onclick = () => openEditor(null); $("dshelf").onclick = () => openShelf(true); $("sclose").onclick = () => openShelf(false); $("sq").oninput = filterShelf; $("snl").onchange = filterShelf; $("srn").onchange = buildShelf;
-  loadFolders(); renderSeg(); $("menubtn").onclick = () => openDrawer(true); $("dscrim").onclick = () => openDrawer(false); $("dnew").onclick = () => openEditor(null); $("fcancel").onclick = closeEditor; $("fsave").onclick = saveEditor;
+  loadFolders(); renderSeg(); $("src").value = "参考書"; markSeg();   // 起動時は「参考書」を選んでおく $("menubtn").onclick = () => openDrawer(true); $("dscrim").onclick = () => openDrawer(false); $("dnew").onclick = () => openEditor(null); $("fcancel").onclick = closeEditor; $("fsave").onclick = saveEditor;
   $("fq").oninput = filterEditor; $("frn").onchange = buildEditorList; $("fall").onclick = () => selAll(true); $("fnone").onclick = () => selAll(false);
   $("t1").onchange = () => { const t = $("t2"); t.innerHTML = '<option value="">すべての科/種別</option>'; const m = tree()[$("t1").value] || {}; Object.keys(m).sort().forEach(k => { const o = document.createElement("option"); o.value = k; o.textContent = k + " (" + m[k] + ")"; t.appendChild(o); }); if ($("q").value) run(); };
   ["t1", "t2", "ext", "yf", "pn"].forEach(i => $(i).addEventListener("change", updFBadge));
