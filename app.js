@@ -518,17 +518,21 @@ function gnEntries() { let t = ""; try { t = localStorage.getItem("hs_gn") || ""
 function gnWrite(arr) { try { localStorage.setItem("hs_gn", arr.map(e => e.k + "=" + e.u).join("\n")); } catch (e) { alert("保存できませんでした"); } }
 function gnSet(f, url) { const arr = gnEntries().filter(e => gnNm(e.k) !== gnNm(f.name)); if (url) arr.push({ k: f.name, u: url }); gnWrite(arr); }
 function openShelf(on) { $("shelf").style.display = on ? "flex" : "none"; if (on) { openDrawer(false); buildShelf(); } }
-function shelfBooks() { return IX.files.filter(x => !x.dead && x.src === SRC_BOOK && (!isMag(x) || $("srn").checked)).sort((a, b) => a.name.localeCompare(b.name, "ja")); }
+const natCmp = (a, b) => a.name.localeCompare(b.name, "ja", { numeric: true });
+const SHELF_OPEN = new Set();
+function shelfBooks() { return IX.files.filter(x => !x.dead && x.src === SRC_BOOK && (!isMag(x) || $("srn").checked)).sort(natCmp); }
 function buildShelf() {
   const box = $("slist"); box.innerHTML = ""; if (!IX) { box.textContent = "先に索引を取り込んでください。"; return; }
-  const byRel = new Map(IX.files.map(f => [f.rel, f]));
-  shelfBooks().forEach(f => {
-    const r = document.createElement("div"); r.className = "srow"; r.dataset.t = norm(f.name + " " + f.path); r.dataset.rel = f.rel;
+  const all = shelfBooks(), kids = new Map();
+  all.forEach(f => { if (f.parentRel) { if (!kids.has(f.parentRel)) kids.set(f.parentRel, []); kids.get(f.parentRel).push(f); } });
+  const mk = (f, child) => {
+    const r = document.createElement("div"); r.className = "srow" + (child ? " schild" : ""); r.dataset.t = norm(f.name + " " + f.path); r.dataset.rel = f.rel; if (child) r.dataset.p = f.parentRel;
     const cv = coverEl(f, () => openFile(f, 1)); cv.className = cv.tagName === "IMG" ? "fcv" : "fcv0"; if (cv.tagName !== "IMG") cv.textContent = "";
     const m = document.createElement("div"); m.className = "smain";
-    const t = document.createElement("div"); t.className = "sname"; t.textContent = (isMag(f) ? "📓 " : "") + f.name;
-    const me = document.createElement("div"); me.className = "smeta"; const par = f.parentRel && byRel.get(f.parentRel);
-    me.textContent = (par ? "章別（" + par.name.replace(/\.pdf$/i, "") + "）　" : "") + (f.size ? fmtSize(f.size).replace(/（.*$/, "") : "");
+    const t = document.createElement("div"); t.className = "sname"; const nk = (kids.get(f.rel) || []).length;
+    t.textContent = (nk ? (SHELF_OPEN.has(f.rel) ? "▼ " : "▶ ") : "") + (isMag(f) ? "📓 " : "") + f.name;
+    const me = document.createElement("div"); me.className = "smeta"; me.textContent = (nk ? "章別 " + nk + "件（タップで開く）　" : "") + (f.size ? fmtSize(f.size).replace(/（.*$/, "") : "");
+    if (nk) { m.style.cursor = "pointer"; m.onclick = () => { SHELF_OPEN.has(f.rel) ? SHELF_OPEN.delete(f.rel) : SHELF_OPEN.add(f.rel); t.textContent = (SHELF_OPEN.has(f.rel) ? "▼ " : "▶ ") + (isMag(f) ? "📓 " : "") + f.name; filterShelf(); }; }
     const gl = document.createElement("div"); gl.className = "sgn"; const ed = document.createElement("div"); ed.className = "sedit";
     const btns = document.createElement("div"); btns.className = "sbtns"; const right = document.createElement("div"); right.className = "sright";
     const b1 = document.createElement("button"); b1.className = "sub"; b1.textContent = "開く"; b1.onclick = () => openFile(f, 1);
@@ -542,18 +546,24 @@ function buildShelf() {
     };
     const edit = () => {
       right.style.display = "none"; ed.innerHTML = ""; const inp = document.createElement("input"); inp.type = "text"; inp.placeholder = "GoodNotesの共有リンクを貼り付け"; inp.value = gnLink(f) || ""; inp.style.cssText = "width:100%;margin:6px 0";
-      const sv = document.createElement("button"); sv.textContent = "保存"; sv.onclick = () => { const v = inp.value.trim(); if (v && !/^https?:\/\//.test(v)) { alert("リンク（https://…）を貼り付けてください"); return; } gnSet(f, v); draw(); shelfCount(); };
+      const sv = document.createElement("button"); sv.textContent = "保存"; sv.onclick = () => { const v = inp.value.trim(); if (v && !/^https?:\/\//.test(v)) { alert("リンク（https://…）を貼り付けてください"); return; } gnSet(f, v); draw(); filterShelf(); };
       const cn = document.createElement("button"); cn.className = "sub"; cn.textContent = "キャンセル"; cn.onclick = draw;
-      const dl = document.createElement("button"); dl.className = "sub"; dl.textContent = "リンクを削除"; dl.onclick = () => { gnSet(f, ""); draw(); shelfCount(); };
+      const dl = document.createElement("button"); dl.className = "sub"; dl.textContent = "リンクを削除"; dl.onclick = () => { gnSet(f, ""); draw(); filterShelf(); };
       const row = document.createElement("div"); row.className = "row"; row.append(sv, cn); if (gnLink(f)) row.append(dl); ed.append(inp, row); inp.focus();
     };
-    draw(); right.append(gl, btns); m.append(t, me, ed); r.append(cv, m, right); box.appendChild(r);
-  });
-  filterShelf(); shelfCount();
+    draw(); right.append(gl, btns); m.append(t, me, ed); r.append(cv, m, right); return r;
+  };
+  all.filter(f => !f.parentRel).forEach(f => { box.appendChild(mk(f, false)); (kids.get(f.rel) || []).forEach(k => box.appendChild(mk(k, true))); });
+  filterShelf();
 }
-function filterShelf() { const q = norm($("sq").value.trim()), only = $("snl").checked; [...$("slist").children].forEach(r => { r.style.display = (!q || (r.dataset.t || "").includes(q)) && (!only || r.classList.contains("nolink")) ? "" : "none"; }); shelfCount(); }
-function shelfCount() { const rows = [...$("slist").children].filter(r => r.dataset && r.dataset.rel); const vis = rows.filter(r => r.style.display !== "none").length, lk = rows.filter(r => !r.classList.contains("nolink")).length; $("scount").textContent = vis + "/" + rows.length + "冊　リンク登録 " + lk + "冊"; }
-
+function filterShelf() {
+  const q = norm($("sq").value.trim()), only = $("snl").checked, rows = [...$("slist").children].filter(r => r.dataset && r.dataset.rel), auto = !!q || only;
+  const pass = r => (!q || (r.dataset.t || "").includes(q)) && (!only || r.classList.contains("nolink"));
+  const okKid = new Set(); rows.forEach(r => { if (r.dataset.p && pass(r)) okKid.add(r.dataset.p); });
+  rows.forEach(r => { const p = r.dataset.p; r.style.display = (p ? pass(r) && (auto || SHELF_OPEN.has(p)) : (pass(r) || okKid.has(r.dataset.rel))) ? "" : "none"; });
+  const vis = rows.filter(r => r.style.display !== "none").length, lk = rows.filter(r => !r.classList.contains("nolink")).length; $("scount").textContent = vis + "/" + rows.length + "件　リンク登録 " + lk + "件";
+}
+function shelfCount() { filterShelf(); }
 let EDIT = null, SEL = new Set();
 function openEditor(f) {
   if (!IX) { alert("先に索引を取り込んでください。"); return; }
@@ -561,7 +571,7 @@ function openEditor(f) {
   $("ftitle").textContent = f ? "フォルダを編集" : "フォルダを作る"; $("fed").style.display = "flex"; openDrawer(false); buildEditorList();
 }
 function closeEditor() { $("fed").style.display = "none"; EDIT = null; }
-function editorBooks() { return IX.files.filter(x => !x.dead && x.src === SRC_BOOK && !x.parentRel && (!isMag(x) || $("frn").checked || SEL.has(x.rel))).sort((a, b) => a.name.localeCompare(b.name, "ja")); }
+function editorBooks() { return IX.files.filter(x => !x.dead && x.src === SRC_BOOK && !x.parentRel && (!isMag(x) || $("frn").checked || SEL.has(x.rel))).sort(natCmp); }
 function buildEditorList() {
   const box = $("flist"); box.innerHTML = "";
   editorBooks().forEach(x => {
