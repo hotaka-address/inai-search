@@ -775,5 +775,9 @@ async function boot() {
   if (resume && resume.q && IX) { $("q").value = resume.q; await run(); if (resume.open && ar === "ok") { const f = IX.files.find(x => x.rel === resume.open.rel && !x.dead); if (f) openFile(f, resume.open.page); } }
 }
 window.addEventListener("load", boot);
+/* 別のアプリから戻ったときに画面が拡大されたままになるのを防ぐ（iPadのホーム画面アプリの不具合対策）: 拡大率を固定し直す */
+function resetZoom() { const m = document.getElementById("vpmeta"); if (!m) return; const c = m.content; m.content = "width=device-width,initial-scale=1,maximum-scale=1,minimum-scale=1,viewport-fit=cover"; setTimeout(() => { m.content = c; window.scrollTo(window.scrollX, window.scrollY); }, 120); }
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") resetZoom(); });
+window.addEventListener("pageshow", resetZoom);
 new MutationObserver(() => document.body.classList.toggle("vopen", $("viewer").style.display === "flex")).observe($("viewer"), { attributes: true, attributeFilter: ["style"] });
 window.__hs = { grams, bm25: (q) => bm25(q, new Uint8Array(IX.N).fill(1)), search: (q, f) => search(q, Object.assign({ src: "", top1: "", top2: "", ext: "", year: 0, prefNew: true }, f || {})), get IX() { return IX; }, loadIndex, syncIndex, CFG };

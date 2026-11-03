@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="ja"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" id="vpmeta" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="文献検索"><meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" href="icon-180.png">
@@ -96,6 +96,8 @@ mark{background:var(--hl);color:inherit;border-radius:4px;padding:0 2px}
 #vsb{display:none;padding:6px 8px;border-bottom:1px solid var(--bd);background:var(--card);gap:6px;align-items:center}#vsb.open{display:flex}#vsb input{flex:1;min-width:0;padding:7px 10px;font-size:14px}#vsb button{padding:7px 16px;font-size:13px}
 .card{cursor:pointer}
 .ttl{display:flex;flex-direction:column;line-height:1.15;margin-left:4px}.ttlmain{display:flex;align-items:center;gap:7px;font-size:22px;font-weight:600;letter-spacing:.18em}.ttl .dot{width:7px;height:7px;border-radius:50%;background:var(--ac);display:inline-block;margin-top:5px}.ttlsub{font-size:9.5px;font-weight:400;letter-spacing:.32em;color:var(--mu);margin-top:2px}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}body{touch-action:manipulation}
+@media (hover:none) and (pointer:coarse){input[type=text],input[type=password],input[type=number],textarea{font-size:16px !important}}
 </style></head><body>
 <div id="dscrim"></div>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><symbol id="ico-shelf" viewBox="0 0 48 48"><rect x="5" y="5" width="38" height="38" rx="6" fill="none" stroke="currentColor" stroke-width="2.6"/><path d="M5 24.5h38" stroke="currentColor" stroke-width="2.6"/><g fill="currentColor"><rect x="10" y="12.5" width="5" height="10.5" rx="1" fill-opacity=".55"/><rect x="17" y="9.5" width="5" height="13.5" rx="1"/><rect x="24" y="11.5" width="4.5" height="11.5" rx="1" fill-opacity=".75"/><rect x="30.6" y="13" width="5" height="10" rx="1" fill-opacity=".4" transform="rotate(8 33 23)"/><rect x="10" y="31" width="5.5" height="11" rx="1" fill-opacity=".8"/><rect x="17.5" y="28" width="4.5" height="14" rx="1" fill-opacity=".45"/><rect x="24" y="31.5" width="5" height="10.5" rx="1"/><rect x="31" y="29" width="5" height="13" rx="1" fill-opacity=".6"/></g></symbol><symbol id="ico-folder" viewBox="0 0 48 48"><path d="M6 14a4 4 0 0 1 4-4h9l4 5h15a4 4 0 0 1 4 4v18a4 4 0 0 1-4 4H10a4 4 0 0 1-4-4z" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round"/><path d="M6 21h36" stroke="currentColor" stroke-width="2.6"/><g fill="currentColor"><rect x="13" y="26" width="5" height="9" rx="1" fill-opacity=".55"/><rect x="20" y="25" width="5" height="10" rx="1"/><rect x="27" y="27" width="5" height="8" rx="1" fill-opacity=".75"/></g></symbol></defs></svg>
