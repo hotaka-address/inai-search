@@ -520,6 +520,7 @@ function mergeF(rem) {
   (rem.folders || []).forEach(f => { const l = fol.get(f.id); if (!l || (f.t || 1) > (l.t || 1)) fol.set(f.id, f); });
   Object.entries(rem.deleted || {}).forEach(([k, t]) => { if (t > (del[k] || 0)) del[k] = t; });
   FOLDERS = [...fol.values()].filter(f => (del[f.id] || 0) < (f.t || 1)).sort((a, b) => (a.t || 1) - (b.t || 1)); DELETED = del;
+  if (rem.gn) mergeGn(rem.gn);
 }
 async function putOwn(name, text) {
   const t = getToken(), ex = await findChild("root", name);
@@ -539,8 +540,10 @@ async function syncFolders(interactive) {
   try {
     const base = "院内検索_マイフォルダ_" + key; const mf = await findChild("root", base + "_mac.json");
     if (mf) mergeF(JSON.parse(new TextDecoder().decode(await downloadBuf(mf.id))));
+    const own = await findChild("root", base + "_ipad.json");      // 入れ直し後に、自分が前に保存した分（フォルダ・GoodNotesのリンク）を取り戻す
+    if (own) { try { mergeF(JSON.parse(new TextDecoder().decode(await downloadBuf(own.id)))); } catch (e) {} }
     saveFolders(); renderSeg(); if ($("drawer").classList.contains("open")) renderDrawer();
-    if (tokHasWrite()) { await putOwn(base + "_ipad.json", JSON.stringify({ folders: FOLDERS, deleted: DELETED })); msg("同期しました" + (mf ? "" : "（PC側のファイルはまだありません）")); }
+    if (tokHasWrite()) { await putOwn(base + "_ipad.json", JSON.stringify({ folders: FOLDERS, deleted: DELETED, gn: gnPayload() })); msg("同期しました" + (mf ? "" : "（PC側のファイルはまだありません）")); }
     else msg("PCの変更を取り込みました（iPadの変更をPCへ送るには、「保存して同期」で再ログイン）");
   } catch (e) { msg("同期できません: " + e.message); } finally { FSYNCING = false; }
 }
@@ -549,7 +552,22 @@ async function syncFolders(interactive) {
 const gnNm = x => x.normalize("NFC").trim().toLowerCase().replace(/\.pdf$/, "");
 function gnEntries() { let t = ""; try { t = localStorage.getItem("hs_gn") || ""; } catch (e) {} return t.split(/\n/).map(l => { const i = l.indexOf("="); return i < 1 ? null : { k: l.slice(0, i).trim(), u: l.slice(i + 1).trim() }; }).filter(Boolean); }
 function gnWrite(arr) { try { localStorage.setItem("hs_gn", arr.map(e => e.k + "=" + e.u).join("\n")); } catch (e) { alert("保存できませんでした"); } }
-function gnSet(f, url) { const arr = gnEntries().filter(e => gnNm(e.k) !== gnNm(f.name)); if (url) arr.push({ k: f.name, u: url }); gnWrite(arr); }
+function gnTs() { try { return JSON.parse(localStorage.getItem("hs_gnt") || "{}"); } catch (e) { return {}; } }
+function gnSet(f, url) {
+  const arr = gnEntries().filter(e => gnNm(e.k) !== gnNm(f.name)); if (url) arr.push({ k: f.name, u: url }); gnWrite(arr);
+  const T = gnTs(); T[gnNm(f.name)] = Date.now(); try { localStorage.setItem("hs_gnt", JSON.stringify(T)); } catch (e) {} syncFolders(false);
+}
+function gnPayload() {   // 同期用: 登録中のリンクと、消したリンク（墓石）を、時刻つきで
+  const T = gnTs(), E = gnEntries(), out = [], seen = new Set();
+  E.forEach(e => { const k = gnNm(e.k); seen.add(k); out.push({ k: e.k, u: e.u, t: T[k] || 1 }); });
+  Object.entries(T).forEach(([k, t]) => { if (!seen.has(k)) out.push({ k, u: "", t }); });
+  return out;
+}
+function mergeGn(list) {
+  if (!Array.isArray(list)) return; const T = gnTs(); let E = gnEntries(), ch = false;
+  list.forEach(r => { const k = gnNm(r.k || ""); if (!k || !(r.t > (T[k] || 0))) return; E = E.filter(e => gnNm(e.k) !== k); if (r.u) E.push({ k: r.k, u: r.u }); T[k] = r.t; ch = true; });
+  if (ch) { gnWrite(E); try { localStorage.setItem("hs_gnt", JSON.stringify(T)); } catch (e) {} if ($("shelf") && $("shelf").style.display === "flex") buildShelf(); }
+}
 function openShelf(on) { $("shelf").style.display = on ? "flex" : "none"; if (on) { openDrawer(false); buildShelf(); } }
 const natCmp = (a, b) => a.name.localeCompare(b.name, "ja", { numeric: true });
 const SHELF_OPEN = new Set();
@@ -775,6 +793,7 @@ async function boot() {
   if (resume && resume.q && IX) { $("q").value = resume.q; await run(); if (resume.open && ar === "ok") { const f = IX.files.find(x => x.rel === resume.open.rel && !x.dead); if (f) openFile(f, resume.open.page); } }
 }
 window.addEventListener("load", boot);
+try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}   // 端末の保存データを、容量不足でも消されにくくする
 /* 別のアプリから戻ったときに画面が拡大されたままになるのを防ぐ（iPadのホーム画面アプリの不具合対策）: 拡大率を固定し直す */
 function resetZoom() { const m = document.getElementById("vpmeta"); if (!m) return; const c = m.content; m.content = "width=device-width,initial-scale=1,maximum-scale=1,minimum-scale=1,viewport-fit=cover"; setTimeout(() => { m.content = c; window.scrollTo(window.scrollX, window.scrollY); }, 120); }
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") resetZoom(); });
