@@ -447,7 +447,7 @@ async function run() {
     ac.append(o1);
     if (gnLink(x.file)) { const o2 = document.createElement("button"); o2.className = "sub"; o2.textContent = "GoodNotes（p." + (x.page || "-") + "をコピー）"; o2.onclick = e => { e.stopPropagation(); openGN(x.file, x.page); }; ac.append(o2); }
     if (x.file.ext === "pdf") { const o3 = document.createElement("button"); o3.className = "sub"; o3.textContent = saveLabel(x.file); o3.onclick = e => { e.stopPropagation(); toggleSave(x.file, o3); }; ac.append(o3); }
-    c.onclick = () => { if (wide()) open(x.page); };   // 横向き(広い画面)はカード全体をタップで開く。縦向きは従来どおり
+    c.onclick = () => open(x.page);   // カード全体をタップで最有力ページを開く（ページの札・ボタンは、それぞれの動作）
     c.append(rk, coverEl(x.file, e => { if (e) e.stopPropagation(); open(x.page); }), m, ac); box.appendChild(c);
   });
 }
