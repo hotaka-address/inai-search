@@ -2,9 +2,9 @@
 <html lang="ja"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="院内検索"><meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="文献検索"><meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" href="icon-180.png">
-<title>院内資料検索</title>
+<title>文献検索</title>
 <style>
 :root{--bg:#f7f7fa;--card:#fff;--tx:#0f1222;--mu:#7a7f93;--ac:#4f46e5;--bd:#e7e8ee;--hl:#e4e0ff;--wa:#b45309;--seg:#ececf2;--chip:#eef0f6}
 @media(prefers-color-scheme:dark){:root{--bg:#0c0e14;--card:#14171f;--tx:#eceef6;--mu:#8d93a8;--ac:#8b8cf8;--bd:#232733;--hl:#3a3680;--wa:#fbbf24;--seg:#1b1e28;--chip:#1d212c}}
@@ -114,7 +114,7 @@ mark{background:var(--hl);color:inherit;border-radius:4px;padding:0 2px}
 <div class="row"><button class="sub" id="fall">表示中を全部選択</button><button class="sub" id="fnone">表示中を全部解除</button><label style="font-size:13px;display:flex;gap:5px;align-items:center"><input type="checkbox" id="frn">雑誌も表示</label><span id="fcount" style="font-size:13px;color:var(--mu);margin-left:auto"></span></div></div>
 <div id="flist"></div></div>
 <div class="wrap">
-<h1><button class="sub" id="menubtn" aria-label="メニュー" style="font-size:18px;padding:4px 10px">☰</button>院内資料検索<small id="info"></small><span style="flex:1"></span><button class="sub" id="syncbtn">索引を更新</button><button class="sub" id="setbtn">設定</button></h1>
+<h1><button class="sub" id="menubtn" aria-label="メニュー" style="font-size:18px;padding:4px 10px">☰</button>文献検索<small id="info"></small><span style="flex:1"></span><button class="sub" id="syncbtn">索引を更新</button><button class="sub" id="setbtn">設定</button></h1>
 <div class="row"><input id="q" type="text" placeholder="例：急性膵炎の治療　/　膵炎 経腸栄養 いつから" autofocus><button id="go">検索</button></div>
 <div id="seg"></div>
 <div class="row filters">
