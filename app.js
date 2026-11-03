@@ -240,6 +240,20 @@ async function syncIndex() {
 /* ---------- 索引の読み込み ---------- */
 // 索引は「本体＋追加分(セグメント)」の集まり。旧形式(v1)は、全体を1つの本体として扱う
 /* コアカンの年度: 所属フォルダ「コアカン 2024年度」やファイル名から決める（索引の年度が不正確なため） */
+/* 章ごとに区切ったファイル → 本全体のファイル（フォルダ作成では本全体だけを表示し、選ぶと章別ファイルも一緒に対象にする） */
+const CHAPTERS = [
+  { parent: "内科レジデントの鉄則 第4版.pdf", dir: "内科レジデントの鉄則/" },
+  { parent: "レジデントのための感染症診療の鉄則.pdf", dir: "感染症診療の鉄則/" },
+  { parent: "1-USMLE Step 1 2023.pdf", names: ["Immunology", "biochemistry", "cardiology", "dermatology", "endocrine", "gastrointestinal", "hematology", "microbiology", "nurology", "parmacology", "pathology", "psychiatry", "public health", "renal", "reproductive", "respiratory"].map(n => n + ".pdf") },
+];
+function fixChapters(files) {
+  const P = "@参考書/", by = new Map(files.filter(f => !f.dead).map(f => [(f.rel || "").normalize("NFC"), f]));
+  CHAPTERS.forEach(g => {
+    const par = by.get(P + g.parent); if (!par) return; par.nchap = 0;
+    files.forEach(f => { if (f.dead || f === par || f.src !== SRC_BOOK) return; const r = (f.rel || "").normalize("NFC");
+      if ((g.dir && r.startsWith(P + g.dir)) || (g.names && g.names.some(n => r === P + n))) { f.parentRel = par.rel; par.nchap++; } });
+  });
+}
 function fixCoreYear(f) {
   const t = (f.rel || f.path || "").normalize("NFC"); if (!/コアカン/.test(t)) return;
   f.core = true;
@@ -267,6 +281,7 @@ async function loadIndex() {
   }
   const fid = new Int32Array(N); let p = 0;
   man.files.forEach((f, i) => { fid.fill(i, p, p + f.n); p += f.n; f.ptxt = norm(f.path.replace(/\.[^./]+$/, "")); f.grp = grpOf(f); fixCoreYear(f); });
+  fixChapters(man.files);
   const segs = []; let sumdl = 0; const covs = {};
   for (const sg of segsOf(man)) {
     const tb = await idbGet("blobs", sg.bm25.terms), pb = await idbGet("blobs", sg.bm25.post), db = await idbGet("blobs", sg.bm25.dl);
@@ -421,11 +436,11 @@ async function openInDrive(f) {
 
 /* ---------- マイフォルダ（よく使う本だけを検索するための自分用フォルダ。この端末に保存） ---------- */
 let FOLDERS = []; const FSET = new Map();
-const inScope = (x, s) => !s || (s.startsWith("f:") ? (FSET.get(s) || new Set()).has(x.rel) : x.grp === s);
+const inScope = (x, s) => !s || (s.startsWith("f:") ? ((FSET.get(s) || new Set()).has(x.rel) || (!!x.parentRel && (FSET.get(s) || new Set()).has(x.parentRel))) : x.grp === s);
 function loadFolders() { try { FOLDERS = JSON.parse(localStorage.getItem("hs_folders") || "[]"); } catch (e) { FOLDERS = []; } rebuildFSet(); }
 function rebuildFSet() { FSET.clear(); FOLDERS.forEach(f => FSET.set("f:" + f.id, new Set(f.rels))); }
 function saveFolders() { try { localStorage.setItem("hs_folders", JSON.stringify(FOLDERS)); } catch (e) { alert("フォルダを保存できませんでした（端末の保存が使えません）"); } rebuildFSet(); }
-function folderCount(f) { return IX ? IX.files.filter(x => !x.dead && f.rels.includes(x.rel)).length : f.rels.length; }
+function folderCount(f) { return IX ? IX.files.filter(x => !x.dead && !x.parentRel && inScope(x, "f:" + f.id)).length : f.rels.length; }
 function markSeg() { [...$("seg").children].forEach(b => b.classList.toggle("on", b.dataset.v === $("src").value)); }
 function renderSeg() {
   const sel = $("src"), seg = $("seg"); seg.innerHTML = "";
@@ -455,14 +470,14 @@ function openEditor(f) {
   $("ftitle").textContent = f ? "フォルダを編集" : "フォルダを作る"; $("fed").style.display = "flex"; openDrawer(false); buildEditorList();
 }
 function closeEditor() { $("fed").style.display = "none"; EDIT = null; }
-function editorBooks() { return IX.files.filter(x => !x.dead && x.src === SRC_BOOK && (!isMag(x) || $("frn").checked || SEL.has(x.rel))).sort((a, b) => a.name.localeCompare(b.name, "ja")); }
+function editorBooks() { return IX.files.filter(x => !x.dead && x.src === SRC_BOOK && !x.parentRel && (!isMag(x) || $("frn").checked || SEL.has(x.rel))).sort((a, b) => a.name.localeCompare(b.name, "ja")); }
 function buildEditorList() {
   const box = $("flist"); box.innerHTML = "";
   editorBooks().forEach(x => {
     const r = document.createElement("label"); r.className = "frow"; r.dataset.t = norm(x.name + " " + x.path);
     const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = SEL.has(x.rel); cb.onchange = () => { cb.checked ? SEL.add(x.rel) : SEL.delete(x.rel); countSel(); };
     const cv = coverEl(x, () => {}); cv.onclick = null; cv.className = cv.tagName === "IMG" ? "fcv" : "fcv0"; if (cv.tagName !== "IMG") cv.textContent = "";
-    const t = document.createElement("span"); t.className = "ft"; t.textContent = (x.grp === GRP_RN ? "📓 " : "") + x.name;
+    const t = document.createElement("span"); t.className = "ft"; t.textContent = (x.grp === GRP_RN ? "📓 " : "") + x.name + (x.nchap ? "　（章別 " + x.nchap + "件を含む）" : "");
     r.append(cb, cv, t); r.cb = cb; r.rel = x.rel; box.appendChild(r);
   });
   filterEditor(); countSel();
@@ -473,7 +488,7 @@ function countSel() { $("fcount").textContent = SEL.size + "冊 選択中"; }
 function saveEditor() {
   const name = $("fname").value.trim(); if (!name) { alert("フォルダ名を入力してください。"); return; }
   if (!SEL.size) { alert("本を1冊以上選んでください。"); return; }
-  const rels = [...SEL];
+  const rels = [...SEL].filter(r => { const f = IX.files.find(x => x.rel === r); return !(f && f.parentRel); });
   if (EDIT) { EDIT.name = name; EDIT.rels = rels; } else FOLDERS.push({ id: Date.now().toString(36), name, rels });
   const sel = "f:" + (EDIT ? EDIT.id : FOLDERS[FOLDERS.length - 1].id);
   saveFolders(); renderSeg(); closeEditor(); $("src").value = sel; markSeg(); $("src").onchange();
