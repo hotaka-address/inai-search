@@ -394,14 +394,18 @@ async function searchInFile(q, rel) {
   for (const [i] of order) { const c = await chunkAt(i), key = c[1] + ":" + c[2]; if (seen.has(key)) continue; seen.add(key); out.push({ page: (c[1] === "p" || c[1] === "s") ? c[2] : 0, loc: locLabel(c[1], c[2]), snip: snippet(c[3], q, 130) }); if (out.length >= 15) break; }
   return { results: out, mode, terms: q.split(/[\s　]+/).filter(Boolean) };
 }
+function showVsp(on) {   // 検索結果の欄（幅が広いときは左、狭いときは上）。本の幅が変わるので、広いときは描き直す
+  const p = $("vsp"); if (p.classList.contains("open") === on) return; p.classList.toggle("open", on);
+  if (CUR && window.innerWidth >= 700) setTimeout(() => CUR && buildPages(CUR.n), 60);
+}
 async function runVSearch() {
-  const q = $("vq").value.trim(), box = $("vres"); if (!q || !CUR) return; box.textContent = "検索中…";
+  const q = $("vq").value.trim(), box = $("vres"); if (!q || !CUR) return; box.textContent = "検索中…"; showVsp(true);
   const rel = CUR.f.rel, r = await searchInFile(q, rel); if (!CUR || CUR.f.rel !== rel) return; box.innerHTML = "";
   if (!r.results.length) { box.textContent = "この本の中に、見つかりませんでした"; return; }
   const h = document.createElement("div"); h.className = "vhint"; h.textContent = r.results.length + "か所（" + (r.mode === "hybrid" ? "キーワード＋意味検索" : "キーワードのみ") + "）　タップでそのページへ"; box.appendChild(h);
   r.results.forEach(x => {
     const row = document.createElement("div"); row.className = "vrow"; const b = document.createElement("b"); b.textContent = x.loc; const sn = document.createElement("div"); hl(sn, x.snip, r.terms);
-    row.append(b, sn); if (x.page > 0) row.onclick = () => { goPage(x.page); if (window.innerWidth < 700) $("vsp").classList.remove("open"); }; box.appendChild(row);
+    row.append(b, sn); if (x.page > 0) row.onclick = () => { goPage(x.page); if (window.innerWidth < 700) showVsp(false); }; box.appendChild(row);
   });
 }
 /* ---------- 画面 ---------- */
@@ -429,7 +433,7 @@ async function run() {
     const open = p => { document.querySelectorAll("#res .card.sel").forEach(e => e.classList.remove("sel")); c.classList.add("sel"); openFile(x.file, p, { cands, overlay: false }); };
     const rk = document.createElement("div"); rk.className = "rk"; rk.textContent = i + 1;
     const m = document.createElement("div"); m.className = "main";
-    const t = document.createElement("div"); t.className = "title"; t.textContent = x.file.name;
+    const t = document.createElement("div"); t.className = "title"; t.textContent = x.file.name; t.style.cursor = "pointer"; t.onclick = e => { e.stopPropagation(); open(x.page); };
     const me = document.createElement("div"); me.className = "meta"; const folder = x.file.path.split("/").slice(0, -1).join("/");
     me.textContent = (x.file.src === SRC_BOOK ? (x.file.grp === GRP_RN ? "📓 " : "📚 参考書 ・ ") : "") + (folder || (x.file.src === SRC_BOOK ? "参考書" : "")) + (x.file.src === SRC_BOOK ? "" : " ・ " + x.file.year + "年頃");
     if (x.file.size) { const sz = document.createElement("span"); sz.className = "sz"; sz.textContent = "　" + fmtSize(x.file.size); me.appendChild(sz); }
@@ -444,7 +448,7 @@ async function run() {
     if (gnLink(x.file)) { const o2 = document.createElement("button"); o2.className = "sub"; o2.textContent = "GoodNotes（p." + (x.page || "-") + "をコピー）"; o2.onclick = e => { e.stopPropagation(); openGN(x.file, x.page); }; ac.append(o2); }
     if (x.file.ext === "pdf") { const o3 = document.createElement("button"); o3.className = "sub"; o3.textContent = saveLabel(x.file); o3.onclick = e => { e.stopPropagation(); toggleSave(x.file, o3); }; ac.append(o3); }
     c.onclick = () => { if (wide()) open(x.page); };   // 横向き(広い画面)はカード全体をタップで開く。縦向きは従来どおり
-    c.append(rk, coverEl(x.file, () => { if (!wide()) open(x.page); }), m, ac); box.appendChild(c);
+    c.append(rk, coverEl(x.file, e => { if (e) e.stopPropagation(); open(x.page); }), m, ac); box.appendChild(c);
   });
 }
 
@@ -743,8 +747,8 @@ function bind() {
   $("s_save").onclick = () => { CFG.clientId = $("s_cid").value.replace(/\s+/g, "");   // 空白・改行は取り除く
     const okId = /^\d+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$/.test(CFG.clientId); CFG.geminiKey = $("s_key").value.trim(); CFG.indexFolder = $("s_fold").value.trim() || DEF.indexFolder; CFG.rootHosp = $("s_rh").value.trim() || DEF.rootHosp; CFG.rootBook = $("s_rb").value.trim() || DEF.rootBook; CFG.fake = $("s_fake").checked; CFG.loginHint = $("s_hint").value.trim(); saveCfg(); $("settings").style.display = "none"; setStat(CFG.clientId && !okId ? "⚠ Client IDの形がおかしいです（「数字-英数字.apps.googleusercontent.com」の1行）。Google Cloudからコピーし直してください" : "設定を保存しました"); };
   $("syncbtn").onclick = async () => { try { if (await syncIndex()) { if (await loadIndex()) afterLoad(); } } catch (e) { setStat("取り込み失敗: " + e.message); } };
-  $("vsearch").onclick = () => { const p = $("vsp"); p.classList.toggle("open"); if (p.classList.contains("open")) $("vq").focus(); if (CUR && window.innerWidth >= 700) setTimeout(() => CUR && buildPages(CUR.n), 60); }; $("vqgo").onclick = runVSearch; $("vq").addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) runVSearch(); });
-  $("vclose").onclick = () => { $("vsp").classList.remove("open"); $("vres").innerHTML = ""; document.body.classList.remove("vover"); $("viewer").style.display = "none"; if (CUR && CUR.io) CUR.io.disconnect(); $("vpages").innerHTML = ""; CUR = null; };
+  $("vsearch").onclick = () => { const b = $("vsb"); b.classList.toggle("open"); if (b.classList.contains("open")) { $("vq").focus(); if ($("vres").children.length) showVsp(true); } else showVsp(false); }; $("vqgo").onclick = runVSearch; $("vq").addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) runVSearch(); });
+  $("vclose").onclick = () => { $("vsp").classList.remove("open"); $("vsb").classList.remove("open"); $("vres").innerHTML = ""; document.body.classList.remove("vover"); $("viewer").style.display = "none"; if (CUR && CUR.io) CUR.io.disconnect(); $("vpages").innerHTML = ""; CUR = null; };
   $("vprev").onclick = () => CUR && goPage(CUR.n - 1); $("vnext").onclick = () => CUR && goPage(CUR.n + 1);
   $("vbody").addEventListener("scroll", onVScroll, { passive: true }); $("vbody").addEventListener("touchstart", () => { if (CUR) CUR.align = 0; }, { passive: true });
   let rz = 0; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { if (CUR && CUR.pgs && $("viewer").style.display !== "none") buildPages(CUR.n); }, 400); });
