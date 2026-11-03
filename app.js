@@ -438,7 +438,12 @@ function gnLink(f) {
   for (const l of t.split(/\n/)) { const i = l.indexOf("="); if (i < 1) continue; const k = nm(l.slice(0, i)), u = l.slice(i + 1).trim(); if (/^https?:\/\//.test(u) && (k === me || k === nm(f.rel || ""))) return u; }
   return null;
 }
-function openGN(f, page) { const u = gnLink(f); if (!u) return; setStat("GoodNotesを開きます" + (page ? "（p." + page + " は、開いてから移動してください）" : "")); window.open(u, "_blank"); }
+function openGN(f, page) {
+  let u = gnLink(f); if (!u) return;
+  u = u.replace("://share.goodnotes.com/", "://web.goodnotes.com/").replace(/#.*$/, "");   // ページ指定は web.goodnotes.com/s/<ID>#page-<番号> の形
+  if (page > 0) u += "#page-" + page;
+  setStat("GoodNotesを開きます" + (page > 0 ? "（p." + page + "）" : "")); window.open(u, "_blank");
+}
 function setVdrive(f) { const b = $("vdrive"); b.style.display = gnLink(f) ? "" : "none"; b.textContent = "GoodNotesで開く"; b.onclick = () => openGN(f, CUR && CUR.n); }
 async function openInDrive(f) {
   try { const id = await resolveDriveId(f); window.open("https://drive.google.com/file/d/" + id + "/view", "_blank"); } catch (e) { setStat(e.message); }
