@@ -56,14 +56,14 @@ mark{background:var(--hl);color:inherit;border-radius:4px;padding:0 2px}
 <div id="drawer"><h2>マイフォルダ</h2><p class="dhint">よく使う本だけを選んで、検索の範囲にできます。</p><div id="dlist"></div><button id="dnew">＋ フォルダを作る</button></div>
 <div id="fed"><div id="fhead"><button class="sub" id="fcancel">キャンセル</button><div id="ftitle">フォルダを作る</div><button id="fsave">保存</button></div>
 <div id="ftools"><input id="fname" type="text" placeholder="フォルダ名（例：当直で使う本）"><input id="fq" type="text" placeholder="本を絞り込む">
-<div class="row"><button class="sub" id="fall">表示中を全部選択</button><button class="sub" id="fnone">表示中を全部解除</button><label style="font-size:13px;display:flex;gap:5px;align-items:center"><input type="checkbox" id="frn">レジデントノートも表示</label><span id="fcount" style="font-size:13px;color:var(--mu);margin-left:auto"></span></div></div>
+<div class="row"><button class="sub" id="fall">表示中を全部選択</button><button class="sub" id="fnone">表示中を全部解除</button><label style="font-size:13px;display:flex;gap:5px;align-items:center"><input type="checkbox" id="frn">雑誌も表示</label><span id="fcount" style="font-size:13px;color:var(--mu);margin-left:auto"></span></div></div>
 <div id="flist"></div></div>
 <div class="wrap">
 <h1><button class="sub" id="menubtn" aria-label="メニュー" style="font-size:18px;padding:4px 10px">☰</button>院内資料検索<small id="info"></small><span style="flex:1"></span><button class="sub" id="syncbtn">索引を更新</button><button class="sub" id="setbtn">設定</button></h1>
 <div class="row"><input id="q" type="text" placeholder="例：急性膵炎の治療　/　膵炎 経腸栄養 いつから" autofocus><button id="go">検索</button></div>
 <div id="seg"></div>
 <div class="row filters">
- <select id="src"><option value="">すべて</option><option value="院内資料">院内資料</option><option value="レジデントノート">レジデントノート</option><option value="参考書">参考書</option></select>
+ <select id="src"><option value="">すべて</option><option value="院内資料">院内資料</option><option value="レジデントノート">雑誌</option><option value="参考書">参考書</option></select>
  <select id="t1"><option value="">すべての分類</option></select>
  <select id="t2"><option value="">すべての科/種別</option></select>
  <select id="ext"><option value="">全形式</option><option value="pdf">PDF</option><option value="pptx">PowerPoint</option><option value="docx">Word</option><option value="xlsx">Excel</option></select>

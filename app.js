@@ -588,7 +588,7 @@ function bind() {
 }
 function afterLoad() {
   const c = {}; IX.files.forEach(f => { if (!f.dead) c[f.grp] = (c[f.grp] || 0) + 1; });
-  $("info").textContent = "院内 " + (c[SRC_HOSP] || 0) + " ／ レジデントノート " + (c[GRP_RN] || 0) + " ／ 参考書 " + (c[SRC_BOOK] || 0) + " ファイル・" + IX.N + "箇所";
+  $("info").textContent = "院内 " + (c[SRC_HOSP] || 0) + " ／ 雑誌 " + (c[GRP_RN] || 0) + " ／ 参考書 " + (c[SRC_BOOK] || 0) + " ファイル・" + IX.N + "箇所";
   fillT1(); setStat("");
 }
 async function boot() {
