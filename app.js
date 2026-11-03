@@ -11,9 +11,11 @@ const isMag = f => f.src === SRC_BOOK && (f.top1 === "雑誌" || f.top1 === "レ
 const grpOf = (f) => isMag(f) ? GRP_RN : f.src;   // 区分: 院内資料 / レジデントノート / 参考書
 
 /* ---------- 設定 ---------- */
-const DEF = { clientId: "", geminiKey: "", indexFolder: "院内検索_iPad索引", rootHosp: "St Lukes", rootBook: "参考書", fake: false, loginHint: "", folderKey: "" };
+const DEF = { clientId: "728337361784-l408enh4jdvp889ino0ig58u0e6ls1ks.apps.googleusercontent.com",   // Client IDは公開してよい値（秘密ではない）
+   geminiKey: "", indexFolder: "院内検索_iPad索引", rootHosp: "St Lukes", rootBook: "参考書", fake: false, loginHint: "", folderKey: "" };
 let CFG = Object.assign({}, DEF);
 try { Object.assign(CFG, JSON.parse(localStorage.getItem("hs_cfg") || "{}")); } catch (e) {}
+if (!CFG.clientId) CFG.clientId = DEF.clientId;
 function saveCfg() { try { localStorage.setItem("hs_cfg", JSON.stringify(CFG)); } catch (e) {} }
 
 /* ---------- IndexedDB ---------- */
