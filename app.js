@@ -788,7 +788,7 @@ function openSettings() {
   $("s_redir").textContent = redirectUri(); $("settings").style.display = "block"; renderRc();
 }
 function bind() {
-  $("go").onclick = run; $("q").addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) run(); });
+  $("go").onclick = () => { $("q").blur(); run(); }; $("q").addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); $("q").blur(); run(); } });
   $("src").onchange = () => { fillT1(); if ($("q").value) run(); };
   $("ftoggle").onclick = () => { $("filters").classList.toggle("open"); updFBadge(); };
   $("dkeysave").onclick = () => { CFG.folderKey = $("dkey").value.trim(); saveCfg(); $("dmsg").textContent = "同期中…"; syncFolders(true); };
@@ -803,7 +803,7 @@ function bind() {
   $("s_save").onclick = () => { CFG.clientId = $("s_cid").value.replace(/\s+/g, "");   // 空白・改行は取り除く
     const okId = /^\d+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$/.test(CFG.clientId); CFG.geminiKey = $("s_key").value.trim(); CFG.indexFolder = $("s_fold").value.trim() || DEF.indexFolder; CFG.rootHosp = $("s_rh").value.trim() || DEF.rootHosp; CFG.rootBook = $("s_rb").value.trim() || DEF.rootBook; CFG.fake = $("s_fake").checked; CFG.loginHint = $("s_hint").value.trim(); saveCfg(); $("settings").style.display = "none"; setStat(CFG.clientId && !okId ? "⚠ Client IDの形がおかしいです（「数字-英数字.apps.googleusercontent.com」の1行）。Google Cloudからコピーし直してください" : "設定を保存しました"); };
   $("syncbtn").onclick = async () => { try { if (await syncIndex()) { if (await loadIndex()) afterLoad(); } } catch (e) { setStat("取り込み失敗: " + e.message); } };
-  $("vsearch").onclick = () => { const b = $("vsb"); b.classList.toggle("open"); if (b.classList.contains("open")) { $("vq").focus(); if ($("vres").children.length) showVsp(true); } else showVsp(false); }; $("vqgo").onclick = runVSearch; $("vq").addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) runVSearch(); });
+  $("vsearch").onclick = () => { const b = $("vsb"); b.classList.toggle("open"); if (b.classList.contains("open")) { $("vq").focus(); if ($("vres").children.length) showVsp(true); } else showVsp(false); }; $("vqgo").onclick = () => { $("vq").blur(); runVSearch(); }; $("vq").addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); $("vq").blur(); runVSearch(); } });
   $("vclose").onclick = () => { $("vsp").classList.remove("open"); $("vsb").classList.remove("open"); $("vres").innerHTML = ""; document.body.classList.remove("vover"); $("viewer").style.display = "none"; if (CUR && CUR.io) CUR.io.disconnect(); $("vpages").innerHTML = ""; CUR = null; };
   $("vprev").onclick = () => CUR && goPage(CUR.n - 1); $("vnext").onclick = () => CUR && goPage(CUR.n + 1);
   $("vbody").addEventListener("scroll", onVScroll, { passive: true }); $("vbody").addEventListener("touchstart", () => { if (CUR) CUR.align = 0; }, { passive: true });
