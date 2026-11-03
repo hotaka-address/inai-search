@@ -805,6 +805,22 @@ async function boot() {
   if (resume && resume.q && IX) { $("q").value = resume.q; await run(); if (resume.open && ar === "ok") { const f = IX.files.find(x => x.rel === resume.open.rel && !x.dead); if (f) openFile(f, resume.open.page); } }
 }
 window.addEventListener("load", boot);
+/* スワイプでメニュー: 画面の左端から右へ引くと開き、開いているメニューを左へ引くと閉じる */
+(function () {
+  let sx = 0, sy = 0, mode = "", done = false;
+  const overlayOpen = () => ["viewer", "shelf", "fed", "settings"].some(i => { const e = document.getElementById(i); return e && e.style.display && e.style.display !== "none"; });
+  document.addEventListener("touchstart", e => {
+    if (e.touches.length !== 1) { mode = ""; return; } const t = e.touches[0]; sx = t.clientX; sy = t.clientY; done = false;
+    const dr = document.getElementById("drawer").classList.contains("open");
+    mode = dr ? "close" : (sx <= 32 && !overlayOpen() ? "open" : "");
+  }, { passive: true });
+  document.addEventListener("touchmove", e => {
+    if (!mode || done) return; const t = e.touches[0], dx = t.clientX - sx, dy = t.clientY - sy;
+    if (Math.abs(dx) < 50 || Math.abs(dy) > Math.abs(dx) * 0.6) return;
+    if (mode === "open" && dx > 0) { done = true; openDrawer(true); }
+    else if (mode === "close" && dx < 0) { done = true; openDrawer(false); }
+  }, { passive: true });
+})();
 try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}   // 端末の保存データを、容量不足でも消されにくくする
 /* 別のアプリから戻ったときに画面が拡大されたままになるのを防ぐ（iPadのホーム画面アプリの不具合対策）: 拡大率を固定し直す */
 function resetZoom() { const m = document.getElementById("vpmeta"); if (!m) return; const c = m.content; m.content = "width=device-width,initial-scale=1,maximum-scale=1,minimum-scale=1,viewport-fit=cover"; setTimeout(() => { m.content = c; window.scrollTo(window.scrollX, window.scrollY); }, 120); }
