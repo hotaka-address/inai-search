@@ -2,7 +2,7 @@
 /* 院内資料・参考書 検索 (iPad版)  索引はGoogle Driveから取り込み、iPad内で検索する */
 const $ = id => document.getElementById(id);
 const CUR_YEAR = new Date().getFullYear();
-const SCOPE = "https://www.googleapis.com/auth/drive.readonly";
+const SCOPE = "https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file";   // 読み取り＋このアプリが作ったファイル（マイフォルダの共有用）
 const PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
 const PDFJS_WORKER = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 const fmtSize = n => !n ? "" : (n >= 1e9 ? (n / 1e9).toFixed(2) + " GB" : n >= 1e6 ? (n / 1e6).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1e3)) + " KB") + "（" + n.toLocaleString("ja-JP") + " バイト）";
@@ -11,7 +11,7 @@ const isMag = f => f.src === SRC_BOOK && (f.top1 === "雑誌" || f.top1 === "レ
 const grpOf = (f) => isMag(f) ? GRP_RN : f.src;   // 区分: 院内資料 / レジデントノート / 参考書
 
 /* ---------- 設定 ---------- */
-const DEF = { clientId: "", geminiKey: "", indexFolder: "院内検索_iPad索引", rootHosp: "St Lukes", rootBook: "参考書", fake: false, loginHint: "" };
+const DEF = { clientId: "", geminiKey: "", indexFolder: "院内検索_iPad索引", rootHosp: "St Lukes", rootBook: "参考書", fake: false, loginHint: "", folderKey: "" };
 let CFG = Object.assign({}, DEF);
 try { Object.assign(CFG, JSON.parse(localStorage.getItem("hs_cfg") || "{}")); } catch (e) {}
 function saveCfg() { try { localStorage.setItem("hs_cfg", JSON.stringify(CFG)); } catch (e) {} }
@@ -74,7 +74,7 @@ function handleAuthReturn() {
   if (!location.hash || location.hash.length < 3) return null;
   const p = new URLSearchParams(location.hash.slice(1));
   if (p.get("access_token")) {
-    try { localStorage.setItem("hs_tok", JSON.stringify({ t: p.get("access_token"), exp: Date.now() + (+p.get("expires_in") || 3600) * 1000 })); } catch (e) {}
+    try { localStorage.setItem("hs_tok", JSON.stringify({ t: p.get("access_token"), exp: Date.now() + (+p.get("expires_in") || 3600) * 1000, sc: p.get("scope") || "" })); } catch (e) {}
     history.replaceState(null, "", location.pathname + location.search); return "ok";
   }
   if (p.get("error")) { history.replaceState(null, "", location.pathname + location.search); return p.get("error"); }
@@ -435,11 +435,11 @@ async function openInDrive(f) {
 }
 
 /* ---------- マイフォルダ（よく使う本だけを検索するための自分用フォルダ。この端末に保存） ---------- */
-let FOLDERS = []; const FSET = new Map();
+let FOLDERS = [], DELETED = {}, FMSG = ""; const FSET = new Map();
 const inScope = (x, s) => !s || (s.startsWith("f:") ? ((FSET.get(s) || new Set()).has(x.rel) || (!!x.parentRel && (FSET.get(s) || new Set()).has(x.parentRel))) : x.grp === s);
-function loadFolders() { try { FOLDERS = JSON.parse(localStorage.getItem("hs_folders") || "[]"); } catch (e) { FOLDERS = []; } rebuildFSet(); }
+function loadFolders() { try { FOLDERS = JSON.parse(localStorage.getItem("hs_folders") || "[]"); DELETED = JSON.parse(localStorage.getItem("hs_fdel") || "{}"); } catch (e) { FOLDERS = []; DELETED = {}; } FOLDERS.forEach(f => { if (!f.t) f.t = 1; }); rebuildFSet(); }
 function rebuildFSet() { FSET.clear(); FOLDERS.forEach(f => FSET.set("f:" + f.id, new Set(f.rels))); }
-function saveFolders() { try { localStorage.setItem("hs_folders", JSON.stringify(FOLDERS)); } catch (e) { alert("フォルダを保存できませんでした（端末の保存が使えません）"); } rebuildFSet(); }
+function saveFolders() { try { localStorage.setItem("hs_folders", JSON.stringify(FOLDERS)); localStorage.setItem("hs_fdel", JSON.stringify(DELETED)); } catch (e) { alert("フォルダを保存できませんでした（端末の保存が使えません）"); } rebuildFSet(); }
 function folderCount(f) { return IX ? IX.files.filter(x => !x.dead && !x.parentRel && inScope(x, "f:" + f.id)).length : f.rels.length; }
 function markSeg() { [...$("seg").children].forEach(b => b.classList.toggle("on", b.dataset.v === $("src").value)); }
 function renderSeg() {
@@ -450,7 +450,7 @@ function renderSeg() {
   [...sel.options].forEach(o => { const b = document.createElement("button"); b.textContent = o.value ? o.textContent : "すべて"; b.dataset.v = o.value; b.onclick = () => { sel.value = o.value; markSeg(); sel.onchange(); }; seg.appendChild(b); });
   markSeg();
 }
-function openDrawer(on) { $("drawer").classList.toggle("open", on); $("dscrim").style.display = on ? "block" : "none"; if (on) renderDrawer(); }
+function openDrawer(on) { $("drawer").classList.toggle("open", on); $("dscrim").style.display = on ? "block" : "none"; if (on) { renderDrawer(); $("dkey").value = CFG.folderKey || ""; $("dmsg").textContent = FMSG; syncFolders(false); } }
 function renderDrawer() {
   const box = $("dlist"); box.innerHTML = "";
   if (!FOLDERS.length) { const e = document.createElement("div"); e.className = "dempty"; e.textContent = "まだフォルダがありません。"; box.appendChild(e); }
@@ -459,9 +459,40 @@ function renderDrawer() {
     const n = document.createElement("div"); n.className = "dname"; n.textContent = "📁 " + f.name; const c = document.createElement("small"); c.textContent = " " + folderCount(f) + "冊"; n.appendChild(c);
     n.onclick = () => { $("src").value = "f:" + f.id; markSeg(); openDrawer(false); $("src").onchange(); };
     const ed = document.createElement("button"); ed.className = "sub"; ed.textContent = "編集"; ed.onclick = () => openEditor(f);
-    const de = document.createElement("button"); de.className = "sub"; de.textContent = "削除"; de.onclick = () => { if (!confirm("フォルダ「" + f.name + "」を削除しますか？（本そのものは消えません）")) return; FOLDERS = FOLDERS.filter(x => x.id !== f.id); saveFolders(); renderSeg(); renderDrawer(); $("src").onchange(); };
+    const de = document.createElement("button"); de.className = "sub"; de.textContent = "削除"; de.onclick = () => { if (!confirm("フォルダ「" + f.name + "」を削除しますか？（本そのものは消えません）")) return; DELETED[f.id] = Date.now(); FOLDERS = FOLDERS.filter(x => x.id !== f.id); saveFolders(); syncFolders(false); renderSeg(); renderDrawer(); $("src").onchange(); };
     r.append(n, ed, de); box.appendChild(r);
   });
+}
+/* PCとの共有: Drive直下に「院内検索_マイフォルダ_<共有名>_ipad.json」を書き、PCが書く「…_mac.json」を読む（共有名が同じ端末どうしだけ共有される） */
+const tokHasWrite = () => { try { const t = JSON.parse(localStorage.getItem("hs_tok") || "null"); return !!(t && /drive\.file/.test(t.sc || "")); } catch (e) { return false; } };
+function mergeF(rem) {
+  const fol = new Map(FOLDERS.map(f => [f.id, f])); const del = Object.assign({}, DELETED);
+  (rem.folders || []).forEach(f => { const l = fol.get(f.id); if (!l || (f.t || 1) > (l.t || 1)) fol.set(f.id, f); });
+  Object.entries(rem.deleted || {}).forEach(([k, t]) => { if (t > (del[k] || 0)) del[k] = t; });
+  FOLDERS = [...fol.values()].filter(f => (del[f.id] || 0) < (f.t || 1)).sort((a, b) => (a.t || 1) - (b.t || 1)); DELETED = del;
+}
+async function putOwn(name, text) {
+  const t = getToken(), ex = await findChild("root", name);
+  if (ex) { const r = await fetch("https://www.googleapis.com/upload/drive/v3/files/" + ex.id + "?uploadType=media", { method: "PATCH", headers: { Authorization: "Bearer " + t, "Content-Type": "application/json" }, body: text }); if (!r.ok) throw new Error("保存に失敗 " + r.status); return; }
+  const b = "hsb" + Date.now(), body = "--" + b + "\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n" + JSON.stringify({ name, parents: ["root"], mimeType: "application/json" }) + "\r\n--" + b + "\r\nContent-Type: application/json\r\n\r\n" + text + "\r\n--" + b + "--";
+  const r = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart", { method: "POST", headers: { Authorization: "Bearer " + t, "Content-Type": "multipart/related; boundary=" + b }, body });
+  if (!r.ok) throw new Error("作成に失敗 " + r.status);
+}
+let FSYNCING = false;
+async function syncFolders(interactive) {
+  const msg = m => { FMSG = m; if ($("dmsg")) $("dmsg").textContent = m; };
+  const key = (CFG.folderKey || "").trim();
+  if (!key) { msg("共有はオフです（共有名を入れると、PCと共有できます）"); return; }
+  if (!getToken()) { if (interactive) { login({}); return; } msg("共有するには、ログインが必要です（「保存して同期」を押してください）"); return; }
+  if (interactive && !tokHasWrite()) { login({}); return; }       // 書き込み権限を足すため、もう一度ログイン
+  if (FSYNCING) return; FSYNCING = true;
+  try {
+    const base = "院内検索_マイフォルダ_" + key; const mf = await findChild("root", base + "_mac.json");
+    if (mf) mergeF(JSON.parse(new TextDecoder().decode(await downloadBuf(mf.id))));
+    saveFolders(); renderSeg(); if ($("drawer").classList.contains("open")) renderDrawer();
+    if (tokHasWrite()) { await putOwn(base + "_ipad.json", JSON.stringify({ folders: FOLDERS, deleted: DELETED })); msg("同期しました" + (mf ? "" : "（PC側のファイルはまだありません）")); }
+    else msg("PCの変更を取り込みました（iPadの変更をPCへ送るには、「保存して同期」で再ログイン）");
+  } catch (e) { msg("同期できません: " + e.message); } finally { FSYNCING = false; }
 }
 let EDIT = null, SEL = new Set();
 function openEditor(f) {
@@ -489,9 +520,9 @@ function saveEditor() {
   const name = $("fname").value.trim(); if (!name) { alert("フォルダ名を入力してください。"); return; }
   if (!SEL.size) { alert("本を1冊以上選んでください。"); return; }
   const rels = [...SEL].filter(r => { const f = IX.files.find(x => x.rel === r); return !(f && f.parentRel); });
-  if (EDIT) { EDIT.name = name; EDIT.rels = rels; } else FOLDERS.push({ id: Date.now().toString(36), name, rels });
+  if (EDIT) { EDIT.name = name; EDIT.rels = rels; EDIT.t = Date.now(); } else FOLDERS.push({ id: Date.now().toString(36), name, rels, t: Date.now() });
   const sel = "f:" + (EDIT ? EDIT.id : FOLDERS[FOLDERS.length - 1].id);
-  saveFolders(); renderSeg(); closeEditor(); $("src").value = sel; markSeg(); $("src").onchange();
+  saveFolders(); syncFolders(false); renderSeg(); closeEditor(); $("src").value = sel; markSeg(); $("src").onchange();
 }
 
 let PDFLIB = null, CUR = null;
@@ -584,6 +615,7 @@ function openSettings() {
 function bind() {
   $("go").onclick = run; $("q").addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) run(); });
   $("src").onchange = () => { fillT1(); if ($("q").value) run(); };
+  $("dkeysave").onclick = () => { CFG.folderKey = $("dkey").value.trim(); saveCfg(); $("dmsg").textContent = "同期中…"; syncFolders(true); };
   loadFolders(); renderSeg(); $("menubtn").onclick = () => openDrawer(true); $("dscrim").onclick = () => openDrawer(false); $("dnew").onclick = () => openEditor(null); $("fcancel").onclick = closeEditor; $("fsave").onclick = saveEditor;
   $("fq").oninput = filterEditor; $("frn").onchange = buildEditorList; $("fall").onclick = () => selAll(true); $("fnone").onclick = () => selAll(false);
   $("t1").onchange = () => { const t = $("t2"); t.innerHTML = '<option value="">すべての科/種別</option>'; const m = tree()[$("t1").value] || {}; Object.keys(m).sort().forEach(k => { const o = document.createElement("option"); o.value = k; o.textContent = k + " (" + m[k] + ")"; t.appendChild(o); }); if ($("q").value) run(); };
@@ -605,7 +637,7 @@ function bind() {
 function afterLoad() {
   const c = {}; IX.files.forEach(f => { if (!f.dead) c[f.grp] = (c[f.grp] || 0) + 1; });
   $("info").textContent = "院内 " + (c[SRC_HOSP] || 0) + " ／ 雑誌 " + (c[GRP_RN] || 0) + " ／ 参考書 " + (c[SRC_BOOK] || 0) + " ファイル・" + IX.N + "箇所";
-  fillT1(); setStat("");
+  fillT1(); setStat(""); syncFolders(false);
 }
 async function boot() {
   bind(); await loadSaved(); if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});

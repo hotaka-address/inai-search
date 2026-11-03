@@ -53,7 +53,9 @@ mark{background:var(--hl);color:inherit;border-radius:4px;padding:0 2px}
 .fcv{width:30px;height:40px;object-fit:cover;border-radius:3px;border:1px solid var(--bd);flex:none}.fcv0{width:30px;height:40px;border:1px dashed var(--bd);border-radius:3px;flex:none}
 </style></head><body>
 <div id="dscrim"></div>
-<div id="drawer"><h2>マイフォルダ</h2><p class="dhint">よく使う本だけを選んで、検索の範囲にできます。</p><div id="dlist"></div><button id="dnew">＋ フォルダを作る</button></div>
+<div id="drawer"><h2>マイフォルダ</h2><p class="dhint">よく使う本だけを選んで、検索の範囲にできます。</p><div id="dlist"></div><button id="dnew">＋ フォルダを作る</button>
+<div style="margin-top:22px;border-top:1px solid var(--bd);padding-top:12px"><div class="dhint" style="margin:0 0 6px">PCと共有する（Google Drive経由）。PCとiPadで<b>同じ共有名</b>を入れます。空にすると共有しません。</div>
+<input id="dkey" type="text" placeholder="共有名（例：hota）" style="width:100%"><button class="sub" id="dkeysave" style="margin-top:6px;width:100%">保存して同期</button><div id="dmsg" style="font-size:12px;color:var(--mu);margin-top:6px"></div></div></div>
 <div id="fed"><div id="fhead"><button class="sub" id="fcancel">キャンセル</button><div id="ftitle">フォルダを作る</div><button id="fsave">保存</button></div>
 <div id="ftools"><input id="fname" type="text" placeholder="フォルダ名（例：当直で使う本）"><input id="fq" type="text" placeholder="本を絞り込む">
 <div class="row"><button class="sub" id="fall">表示中を全部選択</button><button class="sub" id="fnone">表示中を全部解除</button><label style="font-size:13px;display:flex;gap:5px;align-items:center"><input type="checkbox" id="frn">雑誌も表示</label><span id="fcount" style="font-size:13px;color:var(--mu);margin-left:auto"></span></div></div>
