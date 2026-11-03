@@ -508,7 +508,10 @@ function renderSeg() {
   [...sel.options].forEach(o => { const b = document.createElement("button"); b.textContent = o.value ? o.textContent : "すべて"; b.dataset.v = o.value; b.onclick = () => { sel.value = o.value; markSeg(); sel.onchange(); }; seg.appendChild(b); });
   markSeg();
 }
-function openDrawer(on) { $("drawer").classList.toggle("open", on); $("dscrim").style.display = on ? "block" : "none"; if (on) { renderDrawer(); $("dkey").value = CFG.folderKey || ""; $("dmsg").textContent = FMSG; syncFolders(false); } }
+function refreshBar() {   // 状態バーの色を、背景色に改めて決め直させる（メニューの幕で灰色になったまま残るのを防ぐ）
+  document.querySelectorAll('meta[name="theme-color"]').forEach(m => { const c = m.content, n = m.cloneNode(); n.content = c; m.replaceWith(n); });
+}
+function openDrawer(on) { $("drawer").classList.toggle("open", on); $("dscrim").style.display = on ? "block" : "none"; if (!on) { setTimeout(refreshBar, 50); setTimeout(refreshBar, 400); } if (on) { renderDrawer(); $("dkey").value = CFG.folderKey || ""; $("dmsg").textContent = FMSG; syncFolders(false); } }
 function renderDrawer() {
   const box = $("dlist"); box.innerHTML = "";
   if (!FOLDERS.length) { const e = document.createElement("div"); e.className = "dempty"; e.textContent = "まだフォルダがありません。"; box.appendChild(e); }
