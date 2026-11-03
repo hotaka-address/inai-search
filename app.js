@@ -7,7 +7,8 @@ const PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js
 const PDFJS_WORKER = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 const fmtSize = n => !n ? "" : (n >= 1e9 ? (n / 1e9).toFixed(2) + " GB" : n >= 1e6 ? (n / 1e6).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1e3)) + " KB") + "（" + n.toLocaleString("ja-JP") + " バイト）";
 const SRC_HOSP = "院内資料", SRC_BOOK = "参考書", GRP_RN = "雑誌";
-const grpOf = (f) => (f.src === SRC_BOOK && (f.top1 === GRP_RN || f.top1 === "レジデントノート")) ? GRP_RN : f.src;   // 区分: 院内資料 / レジデントノート / 参考書
+const isMag = f => f.src === SRC_BOOK && (f.top1 === "雑誌" || f.top1 === "レジデントノート");
+const grpOf = (f) => isMag(f) ? GRP_RN : f.src;   // 区分: 院内資料 / レジデントノート / 参考書
 
 /* ---------- 設定 ---------- */
 const DEF = { clientId: "", geminiKey: "", indexFolder: "院内検索_iPad索引", rootHosp: "St Lukes", rootBook: "参考書", fake: false, loginHint: "" };
@@ -454,7 +455,7 @@ function openEditor(f) {
   $("ftitle").textContent = f ? "フォルダを編集" : "フォルダを作る"; $("fed").style.display = "flex"; openDrawer(false); buildEditorList();
 }
 function closeEditor() { $("fed").style.display = "none"; EDIT = null; }
-function editorBooks() { return IX.files.filter(x => !x.dead && x.src === SRC_BOOK && (x.grp !== GRP_RN || $("frn").checked || SEL.has(x.rel))).sort((a, b) => a.name.localeCompare(b.name, "ja")); }
+function editorBooks() { return IX.files.filter(x => !x.dead && x.src === SRC_BOOK && (!isMag(x) || $("frn").checked || SEL.has(x.rel))).sort((a, b) => a.name.localeCompare(b.name, "ja")); }
 function buildEditorList() {
   const box = $("flist"); box.innerHTML = "";
   editorBooks().forEach(x => {
