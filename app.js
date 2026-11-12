@@ -220,9 +220,9 @@ async function syncIndex() {
   for (const s of man.shards) need.push(s.c, s.v);
   for (const sg of segsOf(man)) { need.push(sg.bm25.terms, sg.bm25.post, sg.bm25.dl); if (sg.covers) { need.push(sg.covers); optional.add(sg.covers); } }
   if (byName.has("vocab.json.gz")) { need.push("vocab.json.gz"); optional.add("vocab.json.gz"); }   /* 入力補助の用語集 */
-  let nman = null, nkeep = false;   /* UpNoteのノートだけの小さな索引。友達と共有しない別フォルダ「院内検索_ノート索引」にある（Macが自動で更新する）。無い端末（友達など）では、ノート無しで動く */
+  let nman = null, nkeep = false, nimgmap = null;   /* UpNoteのノートだけの小さな索引。友達と共有しない別フォルダ「院内検索_ノート索引」にある（Macが自動で更新する）。無い端末（友達など）では、ノート無しで動く */
   try { const nf = await findChild("root", "院内検索_ノート索引", true);
-    if (nf) { const nl = await listChildren(nf.id); nl.forEach(x => byName.set(x.name, x)); const nmf = nl.find(x => x.name === "notes_manifest.json");
+    if (nf) { const nl = await listChildren(nf.id); nl.forEach(x => byName.set(x.name, x)); const nmf = nl.find(x => x.name === "notes_manifest.json"); nimgmap = {}; nl.forEach(x => { const q = /^nimg_(.+)\.bin$/.exec(x.name); if (q) nimgmap[q[1]] = { id: x.id, md5: x.md5Checksum }; });   /* ノート画像の一覧だけ控える（本体はノートを開いたときに取得） */
       if (nmf) { nman = JSON.parse(new TextDecoder().decode(await downloadBuf(nmf.id))); for (const s of nman.shards) need.push(s.c, s.v); for (const sg of nman.segs) need.push(sg.bm25.terms, sg.bm25.post, sg.bm25.dl); if (nman.html) { need.push(nman.html); optional.add(nman.html); } } } } catch (e) { nman = null; nkeep = true; }   /* 通信の失敗では、前に取り込んだノートを消さない */
   const have = new Set(await idbKeys("blobs")); let total = 0;
   const todo = [];
@@ -239,7 +239,7 @@ async function syncIndex() {
   }
   for (const k of have) if (!need.includes(k)) await idbDel("blobs", k);
   await idbPut("kv", "manifest", man);
-  if (nman) await idbPut("kv", "nmanifest", nman); else if (!nkeep) await idbDel("kv", "nmanifest");
+  if (nman) { await idbPut("kv", "nmanifest", nman); await idbPut("kv", "nimgmap", nimgmap || {}); try { for (const k of await idbKeys("kv")) if (typeof k === "string" && k.startsWith("nimg:") && !(nimgmap && nimgmap[k.slice(5)])) await idbDel("kv", k); } catch (e) {} } else if (!nkeep) { await idbDel("kv", "nmanifest"); await idbDel("kv", "nimgmap"); }
   setStat(todo.length ? "索引を更新しました（" + todo.length + " ファイル）" : "索引は最新です");
   return true;
 }
@@ -853,6 +853,11 @@ const NOTE_OK = new Set(["DIV", "P", "BR", "B", "STRONG", "I", "EM", "U", "S", "
 function safeCopy(src, dst) {   /* 念のため、アプリ側でも許可したタグ・属性だけを写す */
   src.childNodes.forEach(n => {
     if (n.nodeType === 3) { dst.appendChild(document.createTextNode(n.nodeValue)); return; }
+    if (n.nodeType === 1 && n.tagName === "IMG") {   /* UpNoteの画像: 名前と幅だけ受け取り、空の枠を作る（実体は openNote が後から入れる） */
+      const i = n.getAttribute("data-i") || ""; if (!/^[0-9A-Za-z_\-]+\.\w+$/.test(i)) return;
+      const e = document.createElement("img"); e.setAttribute("data-i", i); e.className = "nph"; e.alt = "";
+      const mm = /^(\d{1,4})(%|px)?$/.exec(n.getAttribute("data-w") || ""); if (mm) e.style.width = mm[2] === "%" ? Math.min(100, +mm[1]) + "%" : mm[1] + "px";
+      dst.appendChild(e); return; }
     if (n.nodeType !== 1 || !NOTE_OK.has(n.tagName)) return;
     const e = document.createElement(n.tagName.toLowerCase());
     if (n.tagName === "SPAN" && n.className === "nimg") e.className = "nimg";
@@ -885,22 +890,41 @@ function showNotePanel() {   /* 検索結果は左に残し、右から本文の
   if (was) return; v.classList.remove("in"); void v.offsetWidth; requestAnimationFrame(() => v.classList.add("in"));
   const sel = document.querySelector("#res .card.sel"); if (sel) setTimeout(() => sel.scrollIntoView({ block: "nearest" }), 30);
 }
+let NOTE_URLS = [];
+function revokeNoteImgs() { NOTE_URLS.forEach(u => URL.revokeObjectURL(u)); NOTE_URLS = []; }
+async function loadNoteImages(f, body) {   /* このノートの画像だけDriveから取り（端末に保存して再利用）、開いている間だけ表示する */
+  const imgs = [...body.querySelectorAll("img[data-i]")]; if (!imgs.length) return;
+  const lab = im => { const s = document.createElement("span"); s.className = "nimg"; s.textContent = "🖼 画像（UpNoteで開くと見られます）"; im.replaceWith(s); };
+  let buf = null;
+  try {
+    const map = await idbGet("kv", "nimgmap"), ent = map && f.nid && map[f.nid]; if (!ent) throw new Error("none");
+    const c = await idbGet("kv", "nimg:" + f.nid);
+    if (c && c.md5 === ent.md5) buf = c.data; else { buf = await downloadBuf(ent.id); await idbPut("kv", "nimg:" + f.nid, { md5: ent.md5, data: buf }); }
+  } catch (e) { if (NOTE_CUR === f) imgs.forEach(lab); return; }
+  if (NOTE_CUR !== f) return;
+  let hd, base;
+  try { const hl = new DataView(buf).getUint32(0); hd = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 4, hl))); base = 4 + hl; } catch (e) { imgs.forEach(lab); return; }
+  const m = new Map((hd.i || []).map(x => [x[0], x]));
+  imgs.forEach(im => { const x = m.get(im.getAttribute("data-i")); if (!x) { lab(im); return; }
+    const u = URL.createObjectURL(new Blob([new Uint8Array(buf, base + x[1], x[2])], { type: "image/jpeg" })); NOTE_URLS.push(u);
+    im.onerror = () => lab(im); im.onload = () => im.classList.remove("nph"); im.loading = "lazy"; im.src = u; });
+}
 async function openNote(f, opts) {
-  opts = opts || {}; NOTE_CUR = f; const body = $("nbody");
+  opts = opts || {}; NOTE_CUR = f; revokeNoteImgs(); const body = $("nbody");
   $("ntitle").textContent = f.name.replace(/\.note$/, ""); $("npath").textContent = f.path.split("/").slice(1, -1).join(" › ") + (f.year ? "　" + f.year + "年" : "");
   $("nup").style.display = f.nid ? "" : "none"; body.className = ""; body.textContent = "読み込み中…"; showNotePanel();
   let html = ""; try { html = await noteHtmlOf(f.nid); } catch (e) {}
   const terms = hlTerms(opts.terms || []);
   if (html) {
     if (NOTE_CUR !== f) return; body.textContent = ""; body.className = "rich";
-    const doc = new DOMParser().parseFromString("<body>" + html + "</body>", "text/html"); safeCopy(doc.body, body); markIn(body, terms);
+    const doc = new DOMParser().parseFromString("<body>" + html + "</body>", "text/html"); safeCopy(doc.body, body); markIn(body, terms); loadNoteImages(f, body);
   } else {
     let text = ""; try { text = await noteText(f); } catch (e) { text = "読み込めません: " + e.message; }
     if (NOTE_CUR !== f) return; body.textContent = ""; hl(body, text, terms);
   }
   body.scrollTop = 0; const m = body.querySelector("mark"); if (m) m.scrollIntoView({ block: "center" });
 }
-function closeNote() { const v = $("nview"); v.classList.remove("in"); NOTE_CUR = null; clearTimeout(NOTE_T); NOTE_T = setTimeout(() => { v.style.display = "none"; document.body.classList.remove("npanel"); }, 190); }
+function closeNote() { const v = $("nview"); v.classList.remove("in"); NOTE_CUR = null; revokeNoteImgs(); clearTimeout(NOTE_T); NOTE_T = setTimeout(() => { v.style.display = "none"; document.body.classList.remove("npanel"); }, 190); }
 /* ノートの同期: Macが自動で行う（編集の数分後・毎朝・Mac起動時）。急ぐときは「今すぐ同期」→ Driveに合図のファイルを置く → Macが数分以内に気づいて同期 → 結果をここに表示 */
 const NOTE_STATUS = "院内検索_ノート状態.json", NOTE_REQ = "院内検索_ノート同期要求.json", NOTE_CFG = "院内検索_ノート設定.json"; let NSYNC = false;
 const fmtT = ms => { const d = new Date(ms); return (d.getMonth() + 1) + "/" + d.getDate() + " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); };
