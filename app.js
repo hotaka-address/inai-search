@@ -883,12 +883,25 @@ async function openNote(f, opts) {
 }
 function closeNote() { $("nview").style.display = "none"; NOTE_CUR = null; }
 /* ノートの同期: Macが自動で行う（編集の数分後・毎朝・Mac起動時）。急ぐときは「今すぐ同期」→ Driveに合図のファイルを置く → Macが数分以内に気づいて同期 → 結果をここに表示 */
-const NOTE_STATUS = "院内検索_ノート状態.json", NOTE_REQ = "院内検索_ノート同期要求.json"; let NSYNC = false;
+const NOTE_STATUS = "院内検索_ノート状態.json", NOTE_REQ = "院内検索_ノート同期要求.json", NOTE_CFG = "院内検索_ノート設定.json"; let NSYNC = false;
 const fmtT = ms => { const d = new Date(ms); return (d.getMonth() + 1) + "/" + d.getDate() + " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); };
 function noteMsg(t) { const e = $("dnotemsg"); if (e) e.textContent = t; }
 async function readNoteStatus() { const f = await findChild("root", NOTE_STATUS); if (!f) return null; return JSON.parse(new TextDecoder().decode(await downloadBuf(f.id))); }
 function noteStatusText(s) { return s ? (s.ok ? "最終同期: " + fmtT(s.last_sync) + "（ノート " + s.notes + "件・除外 " + (s.excluded || 0) + "件）" : "Mac側のエラー: " + (s.message || "")) : "Macの同期状態はまだありません"; }
-async function showNoteStatus() { if (!getToken()) { noteMsg("最終同期の表示には、ログイン（「索引を更新」）が必要です"); return; } try { noteMsg(noteStatusText(await readNoteStatus())); } catch (e) { noteMsg("状態を読めません: " + e.message); } }
+const intLabel = v => v === 0 ? "変化の自動同期を止めています" : (v / 60) + "分ごと";
+function intMsg(s) { if (!s || s.interval === undefined) return ""; const sel = $("dnoteint"); if (sel) sel.value = String(s.interval); return "Macの設定: " + intLabel(s.interval) + (s.last_check ? "（Macが最後に確認: " + fmtT(s.last_check) + "）" : ""); }
+async function showNoteStatus() { if (!getToken()) { noteMsg("最終同期の表示には、ログイン（「索引を更新」）が必要です"); return; } try { const s = await readNoteStatus(); noteMsg(noteStatusText(s)); const m = $("dnoteintmsg"); if (m) m.textContent = intMsg(s); } catch (e) { noteMsg("状態を読めません: " + e.message); } }
+/* 見張りの間隔の変更: Driveに設定ファイルを書く → Macが1分ごとに読んで反映 → 状態ファイルで受け取りを確認 */
+async function setNoteInterval() {
+  const v = +$("dnoteint").value, m = $("dnoteintmsg");
+  if (!getToken() || !tokHasWrite()) { login({}); return; }
+  try {
+    const t = Date.now(); m.textContent = "Macに設定を送っています…"; await putOwn(NOTE_CFG, JSON.stringify({ interval: v, t, from: "app" }));
+    m.textContent = "送りました。Macが1〜2分で受け取ります（" + intLabel(v) + "）";
+    for (let i = 0; i < 12; i++) { await new Promise(r => setTimeout(r, 15000)); const s = await readNoteStatus().catch(() => null); if (s && (s.cfg_t || 0) >= t) { m.textContent = "Macが設定を受け取りました（" + intLabel(v) + "）"; return; } }
+    m.textContent = "Macから返事がありません（Macが起きれば反映されます）";
+  } catch (e) { m.textContent = "設定を送れません: " + e.message; }
+}
 async function noteSyncNow() {
   if (NSYNC) return;
   if (!getToken() || !tokHasWrite()) { login({}); return; }       // 合図のファイルを書くための権限が要る
@@ -921,7 +934,7 @@ function bind() {
   $("t1").onchange = () => { const t = $("t2"); t.innerHTML = '<option value="">すべての科/種別</option>'; const m = tree()[$("t1").value] || {}; Object.keys(m).sort().forEach(k => { const o = document.createElement("option"); o.value = k; o.textContent = k + " (" + m[k] + ")"; t.appendChild(o); }); if ($("q").value) run(); };
   ["t1", "t2", "ext", "yf", "pn"].forEach(i => $(i).addEventListener("change", updFBadge));
   ["t2", "ext", "yf", "pn"].forEach(i => $(i).onchange = () => { if ($("q").value) run(); });
-  $("nclose").onclick = closeNote; $("nup").onclick = () => NOTE_CUR && openUpNote(NOTE_CUR); $("dnotego").onclick = noteSyncNow;
+  $("nclose").onclick = closeNote; $("nup").onclick = () => NOTE_CUR && openUpNote(NOTE_CUR); $("dnotego").onclick = noteSyncNow; $("dnoteint").onchange = setNoteInterval;
   $("setbtn").onclick = openSettings; $("s_close").onclick = () => { $("settings").style.display = "none"; };
   $("s_save").onclick = () => { CFG.clientId = $("s_cid").value.replace(/\s+/g, "");   // 空白・改行は取り除く
     const okId = /^\d+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$/.test(CFG.clientId); CFG.geminiKey = $("s_key").value.trim(); CFG.indexFolder = $("s_fold").value.trim() || DEF.indexFolder; CFG.rootHosp = $("s_rh").value.trim() || DEF.rootHosp; CFG.rootBook = $("s_rb").value.trim() || DEF.rootBook; CFG.fake = $("s_fake").checked; CFG.loginHint = $("s_hint").value.trim(); saveCfg(); $("settings").style.display = "none"; setStat(CFG.clientId && !okId ? "⚠ Client IDの形がおかしいです（「数字-英数字.apps.googleusercontent.com」の1行）。Google Cloudからコピーし直してください" : "設定を保存しました"); };
