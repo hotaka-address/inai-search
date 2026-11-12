@@ -867,11 +867,16 @@ function markIn(root, terms) {   /* 書式を壊さずに、本文の文字だ�
   list.forEach(t => { const parts = t.nodeValue.split(re); if (parts.length < 2) return; const fr = document.createDocumentFragment();
     parts.forEach((p, i) => { if (!p) return; if (i % 2) { const m = document.createElement("mark"); m.textContent = p; fr.appendChild(m); } else fr.appendChild(document.createTextNode(p)); }); t.parentNode.replaceChild(fr, t); });
 }
-(function () {   /* ノート本文を右へスワイプすると閉じる（表のスクロールは除く） */
-  let sx = 0, sy = 0, ok = false;
+(function () {   /* ノート本文を右へスワイプして閉じる: 指に合わせてパネルが動き、離すと右へスライドアウト（足りなければ元に戻る）。表の上は除く */
+  let sx = 0, sy = 0, ok = false, drag = false, dx = 0, t0 = 0;
   const el = document.getElementById("nview");
-  el.addEventListener("touchstart", e => { if (e.touches.length !== 1) { ok = false; return; } const t = e.touches[0]; sx = t.clientX; sy = t.clientY; ok = !(e.target.closest && e.target.closest("table")); }, { passive: true });
-  el.addEventListener("touchend", e => { if (!ok) return; ok = false; const t = e.changedTouches[0], dx = t.clientX - sx, dy = t.clientY - sy; if (dx > 80 && Math.abs(dy) < Math.abs(dx) * 0.5) closeNote(); }, { passive: true });
+  el.addEventListener("touchstart", e => { if (e.touches.length !== 1) { ok = false; return; } const t = e.touches[0]; sx = t.clientX; sy = t.clientY; dx = 0; drag = false; t0 = Date.now(); ok = !(e.target.closest && e.target.closest("table")); }, { passive: true });
+  el.addEventListener("touchmove", e => { if (!ok) return; const t = e.touches[0]; dx = t.clientX - sx; const dy = t.clientY - sy;
+    if (!drag) { if (dx > 12 && Math.abs(dy) < dx * 0.5) { drag = true; el.style.transition = "none"; } else return; }
+    el.style.transform = "translateX(" + Math.max(dx, 0) + "px)"; }, { passive: true });
+  el.addEventListener("touchend", () => { if (!ok) return; ok = false; if (!drag) return; drag = false; el.style.transition = ""; el.style.transform = "";
+    const fast = dx / Math.max(1, Date.now() - t0) > 0.5; if (dx > 80 || (dx > 30 && fast)) closeNote(); }, { passive: true });
+  el.addEventListener("touchcancel", () => { if (drag) { drag = false; ok = false; el.style.transition = ""; el.style.transform = ""; } }, { passive: true });
 })();
 let NOTE_T = 0;
 function showNotePanel() {   /* 検索結果は左に残し、右から本文のパネルをスライドして出す。すでに開いていれば中身だけ入れ替える */
