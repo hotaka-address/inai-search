@@ -168,7 +168,7 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
 #dscrim{background:color-mix(in srgb,var(--bg) 60%,transparent) !important}
 #settings{background:color-mix(in srgb,var(--bg) 88%,transparent) !important}
 #drawer{box-shadow:0 0 0 1px var(--bd),14px 0 36px rgba(15,18,34,.16)}
-.sugg{display:flex;gap:6px;overflow-x:auto;padding:6px 0 2px;scrollbar-width:none}.sugg::-webkit-scrollbar{display:none}.sugg:empty{display:none}.sg{flex:none;border:1px solid var(--bd);background:var(--card);color:var(--tx);border-radius:999px;padding:6px 14px;font-size:15px;font-weight:500;white-space:nowrap;box-shadow:0 2px 0 var(--edge)}.sg:active{transform:translateY(1px);box-shadow:none}
+.sugg{display:flex;gap:6px;overflow-x:auto;padding:6px 0 2px;scrollbar-width:none}.sugg::-webkit-scrollbar{display:none}.sugg:empty{display:none}.sugg.dock{position:fixed;left:0;right:0;z-index:60;background:var(--card);border-top:1px solid var(--bd);padding:8px 10px !important;box-shadow:0 -3px 10px rgba(15,18,34,.08)}.sugg.dock .sg{font-size:17px;padding:7px 15px}body.npanel .wrap #sugg.dock{display:flex}.sg{flex:none;border:1px solid var(--bd);background:var(--card);color:var(--tx);border-radius:999px;padding:6px 14px;font-size:15px;font-weight:500;white-space:nowrap;box-shadow:0 2px 0 var(--edge)}.sg:active{transform:translateY(1px);box-shadow:none}
 #drawer:not(.open){box-shadow:none !important}
 .hlayer{position:absolute;left:0;top:0;right:0;bottom:0;pointer-events:none;mix-blend-mode:multiply}.hlayer div{background:rgba(163,230,53,.55);border-radius:2px}.tlayer span{position:absolute;white-space:pre;transform-origin:0 0;color:transparent}#vhl.on{background:rgba(163,230,53,.35);border-color:#84cc16}
 </style></head><body>

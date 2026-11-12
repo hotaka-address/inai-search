@@ -444,11 +444,17 @@ function suggestFor(tok0) {
   if (out.length < 10 && tok.length >= 2) for (let i = 0; i < N && out.length < 10; i++) if (kana ? VOC.r[i].includes(tok) : VOC.tl[i].includes(tok)) take(i);
   return out;
 }
+/* 予測変換のように、キーボードが出ているときは、候補を「キーボードの真上」に出す（出ていないときは、これまで通り検索窓の下） */
+function placeSugg(box) {
+  const vv = window.visualViewport; if (!vv) return; const kb = window.innerHeight - vv.height - vv.offsetTop;
+  if (window.innerHeight - vv.height > 120) { box.classList.add("dock"); box.style.bottom = Math.max(0, kb) + "px"; } else { box.classList.remove("dock"); box.style.bottom = ""; }
+}
+if (window.visualViewport) ["resize", "scroll"].forEach(ev => window.visualViewport.addEventListener(ev, () => document.querySelectorAll(".sugg").forEach(b => { if (b.childElementCount) placeSugg(b); })));
 function attachSuggest(inp, box) {
   const upd = () => {
     box.innerHTML = ""; const v = inp.value, i = Math.max(v.lastIndexOf(" "), v.lastIndexOf("　")); const L = suggestFor(v.slice(i + 1));
     L.forEach(term => { const b = document.createElement("button"); b.className = "sg"; b.textContent = term; b.onpointerdown = e => e.preventDefault();
-      b.onclick = () => { inp.value = v.slice(0, i + 1) + term + " "; box.innerHTML = ""; inp.focus(); }; box.appendChild(b); });
+      b.onclick = () => { inp.value = v.slice(0, i + 1) + term + " "; box.innerHTML = ""; inp.focus(); }; box.appendChild(b); });    if (L.length) placeSugg(box);
   };
   inp.addEventListener("input", upd); inp.addEventListener("focus", upd); inp.addEventListener("blur", () => setTimeout(() => { box.innerHTML = ""; }, 250));
 }
