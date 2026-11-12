@@ -1,4 +1,4 @@
-const V="hs-v84",SHELL=["./","index.html","app.js","manifest.webmanifest","icon-180.png","icon-upnote.png"];
+const V="hs-v85",SHELL=["./","index.html","app.js","manifest.webmanifest","icon-180.png","icon-upnote.png"];
 self.addEventListener("install",e=>{e.waitUntil(caches.open(V).then(c=>c.addAll(SHELL.map(u=>new Request(u,{cache:"reload"})))).then(()=>self.skipWaiting()))});
 self.addEventListener("activate",e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==V).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
 self.addEventListener("fetch",e=>{const u=new URL(e.request.url);
