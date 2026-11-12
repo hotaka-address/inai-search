@@ -223,7 +223,7 @@ async function syncIndex() {
   let nman = null, nkeep = false;   /* UpNoteのノートだけの小さな索引。友達と共有しない別フォルダ「院内検索_ノート索引」にある（Macが自動で更新する）。無い端末（友達など）では、ノート無しで動く */
   try { const nf = await findChild("root", "院内検索_ノート索引", true);
     if (nf) { const nl = await listChildren(nf.id); nl.forEach(x => byName.set(x.name, x)); const nmf = nl.find(x => x.name === "notes_manifest.json");
-      if (nmf) { nman = JSON.parse(new TextDecoder().decode(await downloadBuf(nmf.id))); for (const s of nman.shards) need.push(s.c, s.v); for (const sg of nman.segs) need.push(sg.bm25.terms, sg.bm25.post, sg.bm25.dl); } } } catch (e) { nman = null; nkeep = true; }   /* 通信の失敗では、前に取り込んだノートを消さない */
+      if (nmf) { nman = JSON.parse(new TextDecoder().decode(await downloadBuf(nmf.id))); for (const s of nman.shards) need.push(s.c, s.v); for (const sg of nman.segs) need.push(sg.bm25.terms, sg.bm25.post, sg.bm25.dl); if (nman.html) { need.push(nman.html); optional.add(nman.html); } } } } catch (e) { nman = null; nkeep = true; }   /* 通信の失敗では、前に取り込んだノートを消さない */
   const have = new Set(await idbKeys("blobs")); let total = 0;
   const todo = [];
   for (const n of need) {
@@ -503,13 +503,16 @@ async function run() {
 }
 
 /* ---------- 表紙 ---------- */
+/* UpNote風のアイコン（緑の角丸＋白いノートとペン。公式ロゴの複製ではなく、似せた自作） */
+const UPN_ICON = '<svg viewBox="0 0 64 64" width="100%" height="100%"><defs><linearGradient id="upg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8ee06a"/><stop offset="1" stop-color="#34b36b"/></linearGradient></defs><rect width="64" height="64" rx="15" fill="url(#upg)"/><path d="M20 15h19l9 9v25a3 3 0 0 1-3 3H20a3 3 0 0 1-3-3V18a3 3 0 0 1 3-3z" fill="#fff"/><path d="M39 15v9h9z" fill="#c9efb8"/><path d="M23 33h19M23 39h19M23 45h11" stroke="#34b36b" stroke-width="2.6" stroke-linecap="round"/></svg>';
 function coverEl(f, onclick) {
   let u = IX.covUrl.get(f.rel);
   const cbuf = f.cv && IX.covs[f.cvf || IX.man.covers];
   if (!u && cbuf) { u = URL.createObjectURL(new Blob([new Uint8Array(cbuf, f.cv[0], f.cv[1])], { type: "image/jpeg" })); IX.covUrl.set(f.rel, u); }
   let e;
   if (u) { e = document.createElement("img"); e.className = "cv"; e.src = u; e.alt = ""; e.loading = "lazy"; }
-  else { e = document.createElement("div"); e.className = "cv0"; e.textContent = f.src === SRC_NOTE ? "📝" : f.ext.toUpperCase(); }
+  else if (f.src === SRC_NOTE) { e = document.createElement("div"); e.className = "cv0 upn"; e.innerHTML = UPN_ICON; }
+  else { e = document.createElement("div"); e.className = "cv0"; e.textContent = f.ext.toUpperCase(); }
   e.onclick = onclick; return e;
 }
 
@@ -838,13 +841,45 @@ async function noteText(f) {
   const fi = IX.files.indexOf(f); let s0 = -1; for (let i = 0; i < IX.N; i++) if (IX.fid[i] === fi) { s0 = i; break; }
   if (s0 < 0) return ""; const out = []; for (let i = s0; i < s0 + f.n; i++) out.push((await chunkAt(i))[3]); return out.join("\n");
 }
+/* 書式つき本文: Macが作った note_html.json.gz（ノートID→許可したタグだけのHTML）を読み、見出し・太字・箇条書き・表をそのまま表示する */
+let NHTML = null;
+async function noteHtmlOf(nid) {
+  if (!nid) return "";
+  if (!NHTML) { NHTML = {}; try { const nm = await idbGet("kv", "nmanifest"), b = nm && nm.html ? await idbGet("blobs", nm.html) : null; if (b) NHTML = JSON.parse(await gunzipText(b.data)); } catch (e) {} }
+  return NHTML[nid] || "";
+}
+const NOTE_OK = new Set(["DIV", "P", "BR", "B", "STRONG", "I", "EM", "U", "S", "STRIKE", "H1", "H2", "H3", "H4", "H5", "H6", "UL", "OL", "LI", "TABLE", "THEAD", "TBODY", "TR", "TD", "TH", "COL", "COLGROUP", "BLOCKQUOTE", "HR", "SUB", "SUP", "SPAN", "A", "CODE", "PRE", "MARK"]);
+function safeCopy(src, dst) {   /* 念のため、アプリ側でも許可したタグ・属性だけを写す */
+  src.childNodes.forEach(n => {
+    if (n.nodeType === 3) { dst.appendChild(document.createTextNode(n.nodeValue)); return; }
+    if (n.nodeType !== 1 || !NOTE_OK.has(n.tagName)) return;
+    const e = document.createElement(n.tagName.toLowerCase());
+    if (n.tagName === "SPAN" && n.className === "nimg") e.className = "nimg";
+    if ((n.tagName === "TD" || n.tagName === "TH")) ["colspan", "rowspan"].forEach(k => { const v = n.getAttribute(k); if (v && /^\d{1,2}$/.test(v)) e.setAttribute(k, v); });
+    if (n.tagName === "A") { const h = n.getAttribute("href") || ""; if (/^(https?:|upnote:|mailto:)/i.test(h)) { e.setAttribute("href", h); e.setAttribute("target", "_blank"); e.setAttribute("rel", "noopener"); } }
+    safeCopy(n, e); dst.appendChild(e);
+  });
+}
+function markIn(root, terms) {   /* 書式を壊さずに、本文の文字だけにマーカーを付ける */
+  const ts = terms.filter(Boolean).map(esc); if (!ts.length) return; const re = new RegExp("(" + ts.join("|") + ")", "gi");
+  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT), list = []; let n; while ((n = w.nextNode())) list.push(n);
+  list.forEach(t => { const parts = t.nodeValue.split(re); if (parts.length < 2) return; const fr = document.createDocumentFragment();
+    parts.forEach((p, i) => { if (!p) return; if (i % 2) { const m = document.createElement("mark"); m.textContent = p; fr.appendChild(m); } else fr.appendChild(document.createTextNode(p)); }); t.parentNode.replaceChild(fr, t); });
+}
 async function openNote(f, opts) {
   opts = opts || {}; NOTE_CUR = f; const body = $("nbody");
   $("ntitle").textContent = f.name.replace(/\.note$/, ""); $("npath").textContent = f.path.split("/").slice(0, -1).join(" › ") + (f.year ? "　" + f.year + "年" : "");
-  $("nup").style.display = f.nid ? "" : "none"; body.textContent = "読み込み中…"; $("nview").style.display = "flex";
-  let text = ""; try { text = await noteText(f); } catch (e) { text = "読み込めません: " + e.message; }
-  if (NOTE_CUR !== f) return; body.textContent = ""; hl(body, text, hlTerms(opts.terms || [])); body.scrollTop = 0;
-  const m = body.querySelector("mark"); if (m) m.scrollIntoView({ block: "center" });
+  $("nup").style.display = f.nid ? "" : "none"; body.className = ""; body.textContent = "読み込み中…"; $("nview").style.display = "flex";
+  let html = ""; try { html = await noteHtmlOf(f.nid); } catch (e) {}
+  const terms = hlTerms(opts.terms || []);
+  if (html) {
+    if (NOTE_CUR !== f) return; body.textContent = ""; body.className = "rich";
+    const doc = new DOMParser().parseFromString("<body>" + html + "</body>", "text/html"); safeCopy(doc.body, body); markIn(body, terms);
+  } else {
+    let text = ""; try { text = await noteText(f); } catch (e) { text = "読み込めません: " + e.message; }
+    if (NOTE_CUR !== f) return; body.textContent = ""; hl(body, text, terms);
+  }
+  body.scrollTop = 0; const m = body.querySelector("mark"); if (m) m.scrollIntoView({ block: "center" });
 }
 function closeNote() { $("nview").style.display = "none"; NOTE_CUR = null; }
 /* ノートの同期: Macが自動で行う（編集の数分後・毎朝・Mac起動時）。急ぐときは「今すぐ同期」→ Driveに合図のファイルを置く → Macが数分以内に気づいて同期 → 結果をここに表示 */
@@ -913,6 +948,7 @@ function updNoteUi(has) {
   const sec = $("dnotesec"); if (sec) sec.style.display = has ? "" : "none"; renderSeg();
 }
 function afterLoad() {
+  NHTML = null;
   const c = {}; IX.files.forEach(f => { if (!f.dead) c[f.grp] = (c[f.grp] || 0) + 1; });
   $("info").textContent = "院内 " + (c[SRC_HOSP] || 0) + " ／ 雑誌 " + (c[GRP_RN] || 0) + " ／ 参考書 " + (c[SRC_BOOK] || 0) + (c[SRC_NOTE] ? " ／ UpNote " + c[SRC_NOTE] : "") + " ファイル・" + IX.N + "箇所";
   updNoteUi(!!c[SRC_NOTE]); fillT1(); setStat(""); syncFolders(false); loadVocab();
