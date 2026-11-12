@@ -503,8 +503,8 @@ async function run() {
 }
 
 /* ---------- 表紙 ---------- */
-/* UpNote風のアイコン（緑の角丸＋白いノートとペン。公式ロゴの複製ではなく、似せた自作） */
-const UPN_ICON = '<svg viewBox="0 0 64 64" width="100%" height="100%"><defs><linearGradient id="upg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8ee06a"/><stop offset="1" stop-color="#34b36b"/></linearGradient></defs><rect width="64" height="64" rx="15" fill="url(#upg)"/><path d="M20 15h19l9 9v25a3 3 0 0 1-3 3H20a3 3 0 0 1-3-3V18a3 3 0 0 1 3-3z" fill="#fff"/><path d="M39 15v9h9z" fill="#c9efb8"/><path d="M23 33h19M23 39h19M23 45h11" stroke="#34b36b" stroke-width="2.6" stroke-linecap="round"/></svg>';
+/* UpNoteの公式アイコン（自分のMacのUpNoteアプリから取り出した画像。個人利用） */
+const UPN_ICON = '<img src="icon-upnote.png" alt="UpNote" style="width:100%;height:100%;display:block">';
 function coverEl(f, onclick) {
   let u = IX.covUrl.get(f.rel);
   const cbuf = f.cv && IX.covs[f.cvf || IX.man.covers];
