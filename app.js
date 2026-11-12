@@ -491,6 +491,7 @@ async function run() {
     if (x.file.src !== SRC_NOTE) { const b = document.createElement("span"); b.className = "chip best"; b.textContent = "最有力: " + x.loc; b.onclick = e => { e.stopPropagation(); open(x.page); }; ch.appendChild(b); }
     if (x.file.src !== SRC_NOTE) x.others.forEach(o => { const s = document.createElement("span"); s.className = "chip"; s.textContent = o.loc; s.onclick = e => { e.stopPropagation(); open(o.page); }; ch.appendChild(s); });
     m.append(t, me, sn, ch);
+    if (x.file.src === SRC_NOTE) { const pp = x.file.path.split("/"), nd = document.createElement("div"); nd.className = "ndate"; nd.textContent = [pp.length > 2 ? pp[pp.length - 2] : "", x.file.year ? x.file.year + "年" : ""].filter(Boolean).join(" ・ "); m.appendChild(nd); }
     const ac = document.createElement("div"); ac.className = "act";
     const o1 = document.createElement("button"); o1.textContent = "開く"; o1.onclick = e => { e.stopPropagation(); open(x.page); };
     ac.append(o1);
@@ -881,7 +882,7 @@ function showNotePanel() {   /* 検索結果は左に残し、右から本文の
 }
 async function openNote(f, opts) {
   opts = opts || {}; NOTE_CUR = f; const body = $("nbody");
-  $("ntitle").textContent = f.name.replace(/\.note$/, ""); $("npath").textContent = f.path.split("/").slice(0, -1).join(" › ") + (f.year ? "　" + f.year + "年" : "");
+  $("ntitle").textContent = f.name.replace(/\.note$/, ""); $("npath").textContent = f.path.split("/").slice(1, -1).join(" › ") + (f.year ? "　" + f.year + "年" : "");
   $("nup").style.display = f.nid ? "" : "none"; body.className = ""; body.textContent = "読み込み中…"; showNotePanel();
   let html = ""; try { html = await noteHtmlOf(f.nid); } catch (e) {}
   const terms = hlTerms(opts.terms || []);
