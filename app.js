@@ -474,7 +474,6 @@ async function run() {
   const q = $("q").value.trim(); if (!q || !IX) return; setStat("検索中…");
   let r; try { r = await search(q, filters()); } catch (e) { setStat("検索エラー: " + e.message); return; }
   setStat(r.total + "件の資料がヒット（上位" + r.results.length + "件）　方式: " + (r.mode === "hybrid" ? "キーワード＋意味検索" : "キーワードのみ" + (r.err ? "（意味検索不可: " + r.err + "）" : "")) + "　" + r.ms + "ms");
-  LASTRES = r;
   const box = $("res"); box.innerHTML = ""; if (!r.results.length) { box.innerHTML = '<div class="empty">該当なし</div>'; return; }
   const wide = () => window.matchMedia("(min-width:900px)").matches;
   r.results.forEach((x, i) => {
@@ -835,7 +834,7 @@ function onVScroll() {
 function setZoom(z) { if (!CUR) return; const n = CUR.n; CUR.zoom = z; buildPages(n); }
 
 /* ---------- ノート（UpNote）: 本文をアプリ内で表示して検索語に色を付ける。「UpNoteで開く」で元のノートへ ---------- */
-let NOTE_CUR = null, LASTRES = null;
+let NOTE_CUR = null;
 const upnoteUrl = f => f && f.nid ? "upnote://x-callback-url/openNote?noteId=" + encodeURIComponent(f.nid) : "";
 function openUpNote(f) { const u = upnoteUrl(f); if (!u) { setStat("このノートのIDがありません"); return; } setStat("UpNoteを開きます（UpNoteアプリが入っている端末で動きます）"); location.href = u; }
 async function noteText(f) {
@@ -867,29 +866,23 @@ function markIn(root, terms) {   /* 書式を壊さずに、本文の文字だ�
   list.forEach(t => { const parts = t.nodeValue.split(re); if (parts.length < 2) return; const fr = document.createDocumentFragment();
     parts.forEach((p, i) => { if (!p) return; if (i % 2) { const m = document.createElement("mark"); m.textContent = p; fr.appendChild(m); } else fr.appendChild(document.createTextNode(p)); }); t.parentNode.replaceChild(fr, t); });
 }
-/* ノートを開いたとき、左に検索結果（ノートだけ・小さく）、右に本文。左のカードを押すと、右だけ入れ替わる */
-function fillNoteSide(cur) {
-  const box = $("nlist"); box.innerHTML = ""; const terms = LASTRES ? LASTRES.terms : [];
-  const items = LASTRES ? LASTRES.results.filter(x => x.file.src === SRC_NOTE) : []; if (!items.some(x => x.file === cur)) items.unshift({ file: cur });
-  items.forEach(x => {
-    const c = document.createElement("div"); c.className = "ncard" + (x.file === cur ? " sel" : ""); c.dataset.rel = x.file.rel;
-    const ic = document.createElement("div"); ic.className = "nci"; ic.innerHTML = UPN_ICON;
-    const t = document.createElement("div"); t.className = "nct"; const tt = document.createElement("div"); tt.className = "nctt"; tt.textContent = x.file.name.replace(/\.note$/, "");
-    const mm = document.createElement("div"); mm.className = "ncm"; mm.textContent = x.file.year ? x.file.year + "年" : ""; t.append(tt, mm);
-    c.append(ic, t); c.onclick = () => openNote(x.file, { terms }); box.appendChild(c);
-  });
-  const sel = box.querySelector(".sel"); if (sel) sel.scrollIntoView({ block: "nearest" });
-}
 (function () {   /* ノート本文を右へスワイプすると閉じる（表のスクロールは除く） */
   let sx = 0, sy = 0, ok = false;
-  const el = document.getElementById("nmain");
+  const el = document.getElementById("nview");
   el.addEventListener("touchstart", e => { if (e.touches.length !== 1) { ok = false; return; } const t = e.touches[0]; sx = t.clientX; sy = t.clientY; ok = !(e.target.closest && e.target.closest("table")); }, { passive: true });
   el.addEventListener("touchend", e => { if (!ok) return; ok = false; const t = e.changedTouches[0], dx = t.clientX - sx, dy = t.clientY - sy; if (dx > 80 && Math.abs(dy) < Math.abs(dx) * 0.5) closeNote(); }, { passive: true });
 })();
+let NOTE_T = 0;
+function showNotePanel() {   /* 検索結果は左に残し、右から本文のパネルをスライドして出す。すでに開いていれば中身だけ入れ替える */
+  const v = $("nview"); clearTimeout(NOTE_T); const was = v.style.display === "flex" && v.classList.contains("in");
+  document.body.classList.add("npanel"); v.style.display = "flex";
+  if (was) return; v.classList.remove("in"); void v.offsetWidth; requestAnimationFrame(() => v.classList.add("in"));
+  const sel = document.querySelector("#res .card.sel"); if (sel) setTimeout(() => sel.scrollIntoView({ block: "nearest" }), 30);
+}
 async function openNote(f, opts) {
   opts = opts || {}; NOTE_CUR = f; const body = $("nbody");
   $("ntitle").textContent = f.name.replace(/\.note$/, ""); $("npath").textContent = f.path.split("/").slice(0, -1).join(" › ") + (f.year ? "　" + f.year + "年" : "");
-  $("nup").style.display = f.nid ? "" : "none"; body.className = ""; body.textContent = "読み込み中…"; $("nview").style.display = "flex"; fillNoteSide(f);
+  $("nup").style.display = f.nid ? "" : "none"; body.className = ""; body.textContent = "読み込み中…"; showNotePanel();
   let html = ""; try { html = await noteHtmlOf(f.nid); } catch (e) {}
   const terms = hlTerms(opts.terms || []);
   if (html) {
@@ -901,7 +894,7 @@ async function openNote(f, opts) {
   }
   body.scrollTop = 0; const m = body.querySelector("mark"); if (m) m.scrollIntoView({ block: "center" });
 }
-function closeNote() { $("nview").style.display = "none"; NOTE_CUR = null; }
+function closeNote() { const v = $("nview"); v.classList.remove("in"); NOTE_CUR = null; clearTimeout(NOTE_T); NOTE_T = setTimeout(() => { v.style.display = "none"; document.body.classList.remove("npanel"); }, 190); }
 /* ノートの同期: Macが自動で行う（編集の数分後・毎朝・Mac起動時）。急ぐときは「今すぐ同期」→ Driveに合図のファイルを置く → Macが数分以内に気づいて同期 → 結果をここに表示 */
 const NOTE_STATUS = "院内検索_ノート状態.json", NOTE_REQ = "院内検索_ノート同期要求.json", NOTE_CFG = "院内検索_ノート設定.json"; let NSYNC = false;
 const fmtT = ms => { const d = new Date(ms); return (d.getMonth() + 1) + "/" + d.getDate() + " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); };
