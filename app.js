@@ -484,7 +484,7 @@ async function run() {
     const m = document.createElement("div"); m.className = "main";
     const t = document.createElement("div"); t.className = "title"; t.textContent = x.file.src === SRC_NOTE ? x.file.name.replace(/\.note$/, "") : x.file.name; t.style.cursor = "pointer"; t.onclick = e => { e.stopPropagation(); open(x.page); };
     const me = document.createElement("div"); me.className = "meta"; const folder = x.file.path.split("/").slice(0, -1).join("/");
-    me.textContent = (x.file.src === SRC_NOTE ? "📝 ノート ・ " : "") + (x.file.src === SRC_BOOK ? (x.file.grp === GRP_RN ? "📓 " : "📚 参考書 ・ ") : "") + (folder || (x.file.src === SRC_BOOK ? "参考書" : "")) + (x.file.src === SRC_BOOK ? "" : (x.file.src === SRC_NOTE ? " ・ " + x.file.year + "年" : " ・ " + x.file.year + "年頃"));
+    me.textContent = (x.file.src === SRC_NOTE ? "📝 UpNote ・ " : "") + (x.file.src === SRC_BOOK ? (x.file.grp === GRP_RN ? "📓 " : "📚 参考書 ・ ") : "") + (folder || (x.file.src === SRC_BOOK ? "参考書" : "")) + (x.file.src === SRC_BOOK ? "" : (x.file.src === SRC_NOTE ? " ・ " + x.file.year + "年" : " ・ " + x.file.year + "年頃"));
     if (x.file.size) { const sz = document.createElement("span"); sz.className = "sz"; sz.textContent = "　" + fmtSize(x.file.size); me.appendChild(sz); }
     const sn = document.createElement("div"); sn.className = "snip"; hl(sn, x.snip, r.terms);
     const ch = document.createElement("div"); ch.className = "chips";
@@ -908,13 +908,13 @@ function bind() {
 /* ノートが索引に入っている端末だけ、「ノート」の範囲タブと同期ボタンを出す（友達の端末には出さない） */
 function updNoteUi(has) {
   const sel = $("src"), op = [...sel.options].find(o => o.value === SRC_NOTE);
-  if (has && !op) { const o = document.createElement("option"); o.value = SRC_NOTE; o.textContent = "ノート"; sel.appendChild(o); }
+  if (has && !op) { const o = document.createElement("option"); o.value = SRC_NOTE; o.textContent = "UpNote"; sel.appendChild(o); }
   if (!has && op) op.remove();
   const sec = $("dnotesec"); if (sec) sec.style.display = has ? "" : "none"; renderSeg();
 }
 function afterLoad() {
   const c = {}; IX.files.forEach(f => { if (!f.dead) c[f.grp] = (c[f.grp] || 0) + 1; });
-  $("info").textContent = "院内 " + (c[SRC_HOSP] || 0) + " ／ 雑誌 " + (c[GRP_RN] || 0) + " ／ 参考書 " + (c[SRC_BOOK] || 0) + (c[SRC_NOTE] ? " ／ ノート " + c[SRC_NOTE] : "") + " ファイル・" + IX.N + "箇所";
+  $("info").textContent = "院内 " + (c[SRC_HOSP] || 0) + " ／ 雑誌 " + (c[GRP_RN] || 0) + " ／ 参考書 " + (c[SRC_BOOK] || 0) + (c[SRC_NOTE] ? " ／ UpNote " + c[SRC_NOTE] : "") + " ファイル・" + IX.N + "箇所";
   updNoteUi(!!c[SRC_NOTE]); fillT1(); setStat(""); syncFolders(false); loadVocab();
 }
 async function boot() {
