@@ -247,13 +247,19 @@ const CHAPTERS = [
   { parent: "内科レジデントの鉄則 第4版.pdf", dir: "内科レジデントの鉄則/" },
   { parent: "レジデントのための感染症診療の鉄則.pdf", dir: "感染症診療の鉄則/" },
   { parent: "1-USMLE Step 1 2023.pdf", names: ["Immunology", "biochemistry", "cardiology", "dermatology", "endocrine", "gastrointestinal", "hematology", "microbiology", "nurology", "parmacology", "pathology", "psychiatry", "public health", "renal", "reproductive", "respiratory"].map(n => n + ".pdf") },
+  { parent: "Year Note 2024.pdf", dir: "Year Note 2024/", ex: "過去問/" },
+  { parent: "レビューブック-内科外科.pdf", dir: "レビューブック-内科外科/" },
+  { parent: "レビューブック-マイナー.pdf", dir: "レビューブック-マイナー/" },
+  { parent: "レビューブック-公衆衛生.pdf", dir: "レビューブック-公衆衛生/" },
+  { parent: "レビューブック-小児科.pdf", dir: "レビューブック-小児科/" },
+  { parent: "レビューブック-産婦人科.pdf", dir: "レビューブック-産婦人科/" },
 ];
 function fixChapters(files) {
   const P = "@参考書/", by = new Map(files.filter(f => !f.dead).map(f => [(f.rel || "").normalize("NFC"), f]));
   CHAPTERS.forEach(g => {
     const par = by.get(P + g.parent); if (!par) return; par.nchap = 0;
     files.forEach(f => { if (f.dead || f === par || f.src !== SRC_BOOK) return; const r = (f.rel || "").normalize("NFC");
-      if ((g.dir && r.startsWith(P + g.dir)) || (g.names && g.names.some(n => r === P + n))) { f.parentRel = par.rel; par.nchap++; } });
+      if ((g.dir && r.startsWith(P + g.dir) && !(g.ex && r.startsWith(P + g.dir + g.ex))) || (g.names && g.names.some(n => r === P + n))) { f.parentRel = par.rel; par.nchap++; } });
   });
 }
 function fixCoreYear(f) {
