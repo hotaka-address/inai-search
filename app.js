@@ -6,7 +6,7 @@ const SCOPE = "https://www.googleapis.com/auth/drive.readonly https://www.google
 const PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
 const PDFJS_WORKER = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 const fmtSize = n => !n ? "" : (n >= 1e9 ? (n / 1e9).toFixed(2) + " GB" : n >= 1e6 ? (n / 1e6).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1e3)) + " KB") + "（" + n.toLocaleString("ja-JP") + " バイト）";
-const SRC_HOSP = "院内資料", SRC_BOOK = "参考書", GRP_RN = "雑誌";
+const SRC_HOSP = "院内資料", SRC_BOOK = "参考書", GRP_RN = "雑誌", SRC_NOTE = "ノート";
 const isMag = f => f.src === SRC_BOOK && (f.top1 === "雑誌" || f.top1 === "レジデントノート");
 const grpOf = (f) => isMag(f) ? GRP_RN : f.src;   // 区分: 院内資料 / レジデントノート / 参考書
 
@@ -220,6 +220,10 @@ async function syncIndex() {
   for (const s of man.shards) need.push(s.c, s.v);
   for (const sg of segsOf(man)) { need.push(sg.bm25.terms, sg.bm25.post, sg.bm25.dl); if (sg.covers) { need.push(sg.covers); optional.add(sg.covers); } }
   if (byName.has("vocab.json.gz")) { need.push("vocab.json.gz"); optional.add("vocab.json.gz"); }   /* 入力補助の用語集 */
+  let nman = null, nkeep = false;   /* UpNoteのノートだけの小さな索引。友達と共有しない別フォルダ「院内検索_ノート索引」にある（Macが自動で更新する）。無い端末（友達など）では、ノート無しで動く */
+  try { const nf = await findChild("root", "院内検索_ノート索引", true);
+    if (nf) { const nl = await listChildren(nf.id); nl.forEach(x => byName.set(x.name, x)); const nmf = nl.find(x => x.name === "notes_manifest.json");
+      if (nmf) { nman = JSON.parse(new TextDecoder().decode(await downloadBuf(nmf.id))); for (const s of nman.shards) need.push(s.c, s.v); for (const sg of nman.segs) need.push(sg.bm25.terms, sg.bm25.post, sg.bm25.dl); } } } catch (e) { nman = null; nkeep = true; }   /* 通信の失敗では、前に取り込んだノートを消さない */
   const have = new Set(await idbKeys("blobs")); let total = 0;
   const todo = [];
   for (const n of need) {
@@ -235,6 +239,7 @@ async function syncIndex() {
   }
   for (const k of have) if (!need.includes(k)) await idbDel("blobs", k);
   await idbPut("kv", "manifest", man);
+  if (nman) await idbPut("kv", "nmanifest", nman); else if (!nkeep) await idbDel("kv", "nmanifest");
   setStat(todo.length ? "索引を更新しました（" + todo.length + " ファイル）" : "索引は最新です");
   return true;
 }
@@ -277,8 +282,14 @@ async function gunzipText(buf) {
   const ds = new DecompressionStream("gzip"); const w = ds.writable.getWriter(); w.write(new Uint8Array(buf)); w.close();
   return new Response(ds.readable).text();
 }
+/* ノートの索引を、本の索引の後ろにつなぐ（ファイル番号・箇所の番号をずらす） */
+function mergeNotes(man, nm) {
+  const nb = man.nchunks, nf = man.files.length;
+  return Object.assign({}, man, { nchunks: nb + nm.nchunks, files: man.files.concat(nm.files), shards: man.shards.concat(nm.shards.map(s => Object.assign({}, s, { start: s.start + nb }))), segs: segsOf(man).concat(nm.segs.map(g => Object.assign({}, g, { start: g.start + nb, f0: g.f0 + nf }))) });
+}
 async function loadIndex() {
-  const man = await idbGet("kv", "manifest"); if (!man) return false;
+  let man = await idbGet("kv", "manifest"); if (!man) return false;
+  try { const nm = await idbGet("kv", "nmanifest"); if (nm && nm.files && nm.files.length && nm.dim === man.dim && nm.segs && nm.segs.length) { let ok = true; for (const x of [...nm.shards.flatMap(s => [s.c, s.v]), ...nm.segs.flatMap(g => [g.bm25.terms, g.bm25.post, g.bm25.dl])]) if (!(await idbGet("blobs", x))) ok = false; if (ok) man = mergeNotes(man, nm); } } catch (e) {}
   setStat("索引を読み込み中…（起動直後は10〜30秒かかります）");
   const dim = man.dim, N = man.nchunks;
   const Q = new Int8Array(N * dim), S = new Float32Array(N);
@@ -471,19 +482,20 @@ async function run() {
     const open = p => { document.querySelectorAll("#res .card.sel").forEach(e => e.classList.remove("sel")); c.classList.add("sel"); openFile(x.file, p, { cands, overlay: false, terms: r.terms }); };
     const rk = document.createElement("div"); rk.className = "rk"; rk.textContent = i + 1;
     const m = document.createElement("div"); m.className = "main";
-    const t = document.createElement("div"); t.className = "title"; t.textContent = x.file.name; t.style.cursor = "pointer"; t.onclick = e => { e.stopPropagation(); open(x.page); };
+    const t = document.createElement("div"); t.className = "title"; t.textContent = x.file.src === SRC_NOTE ? x.file.name.replace(/\.note$/, "") : x.file.name; t.style.cursor = "pointer"; t.onclick = e => { e.stopPropagation(); open(x.page); };
     const me = document.createElement("div"); me.className = "meta"; const folder = x.file.path.split("/").slice(0, -1).join("/");
-    me.textContent = (x.file.src === SRC_BOOK ? (x.file.grp === GRP_RN ? "📓 " : "📚 参考書 ・ ") : "") + (folder || (x.file.src === SRC_BOOK ? "参考書" : "")) + (x.file.src === SRC_BOOK ? "" : " ・ " + x.file.year + "年頃");
+    me.textContent = (x.file.src === SRC_NOTE ? "📝 ノート ・ " : "") + (x.file.src === SRC_BOOK ? (x.file.grp === GRP_RN ? "📓 " : "📚 参考書 ・ ") : "") + (folder || (x.file.src === SRC_BOOK ? "参考書" : "")) + (x.file.src === SRC_BOOK ? "" : (x.file.src === SRC_NOTE ? " ・ " + x.file.year + "年" : " ・ " + x.file.year + "年頃"));
     if (x.file.size) { const sz = document.createElement("span"); sz.className = "sz"; sz.textContent = "　" + fmtSize(x.file.size); me.appendChild(sz); }
     const sn = document.createElement("div"); sn.className = "snip"; hl(sn, x.snip, r.terms);
     const ch = document.createElement("div"); ch.className = "chips";
-    const b = document.createElement("span"); b.className = "chip best"; b.textContent = "最有力: " + x.loc; b.onclick = e => { e.stopPropagation(); open(x.page); }; ch.appendChild(b);
-    x.others.forEach(o => { const s = document.createElement("span"); s.className = "chip"; s.textContent = o.loc; s.onclick = e => { e.stopPropagation(); open(o.page); }; ch.appendChild(s); });
+    if (x.file.src !== SRC_NOTE) { const b = document.createElement("span"); b.className = "chip best"; b.textContent = "最有力: " + x.loc; b.onclick = e => { e.stopPropagation(); open(x.page); }; ch.appendChild(b); }
+    if (x.file.src !== SRC_NOTE) x.others.forEach(o => { const s = document.createElement("span"); s.className = "chip"; s.textContent = o.loc; s.onclick = e => { e.stopPropagation(); open(o.page); }; ch.appendChild(s); });
     m.append(t, me, sn, ch);
     const ac = document.createElement("div"); ac.className = "act";
     const o1 = document.createElement("button"); o1.textContent = "開く"; o1.onclick = e => { e.stopPropagation(); open(x.page); };
     ac.append(o1);
     if (gnLink(x.file)) { const o2 = document.createElement("button"); o2.className = "sub"; o2.textContent = "GoodNotes（p." + (x.page || "-") + "をコピー）"; o2.onclick = e => { e.stopPropagation(); openGN(x.file, x.page); }; ac.append(o2); }
+    if (x.file.src === SRC_NOTE && x.file.nid) { const o4 = document.createElement("button"); o4.className = "sub"; o4.textContent = "UpNoteで開く"; o4.onclick = e => { e.stopPropagation(); openUpNote(x.file); }; ac.append(o4); }
     if (x.file.ext === "pdf") { const o3 = document.createElement("button"); o3.className = "sub"; o3.textContent = saveLabel(x.file); o3.onclick = e => { e.stopPropagation(); toggleSave(x.file, o3); }; ac.append(o3); }
     c.onclick = () => open(x.page);   // カード全体をタップで最有力ページを開く（ページの札・ボタンは、それぞれの動作）
     c.append(rk, coverEl(x.file, e => { if (e) e.stopPropagation(); open(x.page); }), m, ac); box.appendChild(c);
@@ -497,7 +509,7 @@ function coverEl(f, onclick) {
   if (!u && cbuf) { u = URL.createObjectURL(new Blob([new Uint8Array(cbuf, f.cv[0], f.cv[1])], { type: "image/jpeg" })); IX.covUrl.set(f.rel, u); }
   let e;
   if (u) { e = document.createElement("img"); e.className = "cv"; e.src = u; e.alt = ""; e.loading = "lazy"; }
-  else { e = document.createElement("div"); e.className = "cv0"; e.textContent = f.ext.toUpperCase(); }
+  else { e = document.createElement("div"); e.className = "cv0"; e.textContent = f.src === SRC_NOTE ? "📝" : f.ext.toUpperCase(); }
   e.onclick = onclick; return e;
 }
 
@@ -542,7 +554,7 @@ function renderSeg() {
 function refreshBar() {   // 状態バーの色を、背景色に改めて決め直させる（メニューの幕で灰色になったまま残るのを防ぐ）
   document.querySelectorAll('meta[name="theme-color"]').forEach(m => { const c = m.content, n = m.cloneNode(); n.content = c; m.replaceWith(n); });
 }
-function openDrawer(on) { $("drawer").classList.toggle("open", on); $("dscrim").style.display = on ? "block" : "none"; if (!on) { setTimeout(refreshBar, 50); setTimeout(refreshBar, 400); } if (on) { renderDrawer(); $("dkey").value = CFG.folderKey || ""; $("dmsg").textContent = FMSG; syncFolders(false); } }
+function openDrawer(on) { $("drawer").classList.toggle("open", on); $("dscrim").style.display = on ? "block" : "none"; if (!on) { setTimeout(refreshBar, 50); setTimeout(refreshBar, 400); } if (on) { renderDrawer(); $("dkey").value = CFG.folderKey || ""; $("dmsg").textContent = FMSG; syncFolders(false); if (!NSYNC) showNoteStatus(); } }
 function renderDrawer() {
   const box = $("dlist"); box.innerHTML = "";
   if (!FOLDERS.length) { const e = document.createElement("div"); e.className = "dempty"; e.textContent = "まだフォルダがありません。"; box.appendChild(e); }
@@ -702,6 +714,7 @@ function loadScript(src) { return new Promise((res, rej) => { const s = document
 let OPEN_OPTS = {};
 function setViewerMode(o) { document.body.classList.toggle("vover", !!o.overlay || window.innerWidth < 900); }
 async function openFile(f, page, opts) {
+  if (f.src === SRC_NOTE) return openNote(f, opts);
   opts = opts || {}; OPEN_OPTS = opts; setViewerMode(opts);
   const resume = { q: $("q").value, open: { rel: f.rel, page } };
   let sv = f.ext === "pdf" && SAVED.get(f.rel), rcache = false;
@@ -817,6 +830,45 @@ function onVScroll() {
 }
 function setZoom(z) { if (!CUR) return; const n = CUR.n; CUR.zoom = z; buildPages(n); }
 
+/* ---------- ノート（UpNote）: 本文をアプリ内で表示して検索語に色を付ける。「UpNoteで開く」で元のノートへ ---------- */
+let NOTE_CUR = null;
+const upnoteUrl = f => f && f.nid ? "upnote://x-callback-url/openNote?noteId=" + encodeURIComponent(f.nid) : "";
+function openUpNote(f) { const u = upnoteUrl(f); if (!u) { setStat("このノートのIDがありません"); return; } setStat("UpNoteを開きます（UpNoteアプリが入っている端末で動きます）"); location.href = u; }
+async function noteText(f) {
+  const fi = IX.files.indexOf(f); let s0 = -1; for (let i = 0; i < IX.N; i++) if (IX.fid[i] === fi) { s0 = i; break; }
+  if (s0 < 0) return ""; const out = []; for (let i = s0; i < s0 + f.n; i++) out.push((await chunkAt(i))[3]); return out.join("\n");
+}
+async function openNote(f, opts) {
+  opts = opts || {}; NOTE_CUR = f; const body = $("nbody");
+  $("ntitle").textContent = f.name.replace(/\.note$/, ""); $("npath").textContent = f.path.split("/").slice(0, -1).join(" › ") + (f.year ? "　" + f.year + "年" : "");
+  $("nup").style.display = f.nid ? "" : "none"; body.textContent = "読み込み中…"; $("nview").style.display = "flex";
+  let text = ""; try { text = await noteText(f); } catch (e) { text = "読み込めません: " + e.message; }
+  if (NOTE_CUR !== f) return; body.textContent = ""; hl(body, text, hlTerms(opts.terms || [])); body.scrollTop = 0;
+  const m = body.querySelector("mark"); if (m) m.scrollIntoView({ block: "center" });
+}
+function closeNote() { $("nview").style.display = "none"; NOTE_CUR = null; }
+/* ノートの同期: Macが自動で行う（編集の数分後・毎朝・Mac起動時）。急ぐときは「今すぐ同期」→ Driveに合図のファイルを置く → Macが数分以内に気づいて同期 → 結果をここに表示 */
+const NOTE_STATUS = "院内検索_ノート状態.json", NOTE_REQ = "院内検索_ノート同期要求.json"; let NSYNC = false;
+const fmtT = ms => { const d = new Date(ms); return (d.getMonth() + 1) + "/" + d.getDate() + " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); };
+function noteMsg(t) { const e = $("dnotemsg"); if (e) e.textContent = t; }
+async function readNoteStatus() { const f = await findChild("root", NOTE_STATUS); if (!f) return null; return JSON.parse(new TextDecoder().decode(await downloadBuf(f.id))); }
+function noteStatusText(s) { return s ? (s.ok ? "最終同期: " + fmtT(s.last_sync) + "（ノート " + s.notes + "件・除外 " + (s.excluded || 0) + "件）" : "Mac側のエラー: " + (s.message || "")) : "Macの同期状態はまだありません"; }
+async function showNoteStatus() { if (!getToken()) { noteMsg("最終同期の表示には、ログイン（「索引を更新」）が必要です"); return; } try { noteMsg(noteStatusText(await readNoteStatus())); } catch (e) { noteMsg("状態を読めません: " + e.message); } }
+async function noteSyncNow() {
+  if (NSYNC) return;
+  if (!getToken() || !tokHasWrite()) { login({}); return; }       // 合図のファイルを書くための権限が要る
+  NSYNC = true; $("dnotego").disabled = true;
+  try {
+    const t = Date.now(); noteMsg("Macに同期を頼んでいます…"); await putOwn(NOTE_REQ, JSON.stringify({ t, from: "app" }));
+    noteMsg("Macが気づくまで待っています（最大5分。Macが起きていて、ネットにつながっている必要があります）");
+    let st = null; const t0 = Date.now();
+    while (Date.now() - t0 < 300000) { await new Promise(r => setTimeout(r, 10000)); const s = await readNoteStatus().catch(() => null); if (s && (s.handled_request || 0) >= t) { st = s; break; } }
+    if (!st) { noteMsg("Macから返事がありません（Macが寝ている・Driveが止まっている可能性）。Macが起きれば、自動で反映されます"); return; }
+    noteMsg(noteStatusText(st) + "　索引を取り込んでいます…"); if (await syncIndex()) { if (await loadIndex()) afterLoad(); }
+    noteMsg(noteStatusText(st) + "　取り込みました");
+  } catch (e) { noteMsg("同期できません: " + e.message); } finally { NSYNC = false; $("dnotego").disabled = false; }
+}
+
 /* ---------- 設定 ---------- */
 function openSettings() {
   $("s_cid").value = CFG.clientId; $("s_key").value = CFG.geminiKey; $("s_fold").value = CFG.indexFolder; $("s_rh").value = CFG.rootHosp; $("s_rb").value = CFG.rootBook; $("s_fake").checked = CFG.fake; $("s_hint").value = CFG.loginHint || "";
@@ -834,6 +886,7 @@ function bind() {
   $("t1").onchange = () => { const t = $("t2"); t.innerHTML = '<option value="">すべての科/種別</option>'; const m = tree()[$("t1").value] || {}; Object.keys(m).sort().forEach(k => { const o = document.createElement("option"); o.value = k; o.textContent = k + " (" + m[k] + ")"; t.appendChild(o); }); if ($("q").value) run(); };
   ["t1", "t2", "ext", "yf", "pn"].forEach(i => $(i).addEventListener("change", updFBadge));
   ["t2", "ext", "yf", "pn"].forEach(i => $(i).onchange = () => { if ($("q").value) run(); });
+  $("nclose").onclick = closeNote; $("nup").onclick = () => NOTE_CUR && openUpNote(NOTE_CUR); $("dnotego").onclick = noteSyncNow;
   $("setbtn").onclick = openSettings; $("s_close").onclick = () => { $("settings").style.display = "none"; };
   $("s_save").onclick = () => { CFG.clientId = $("s_cid").value.replace(/\s+/g, "");   // 空白・改行は取り除く
     const okId = /^\d+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$/.test(CFG.clientId); CFG.geminiKey = $("s_key").value.trim(); CFG.indexFolder = $("s_fold").value.trim() || DEF.indexFolder; CFG.rootHosp = $("s_rh").value.trim() || DEF.rootHosp; CFG.rootBook = $("s_rb").value.trim() || DEF.rootBook; CFG.fake = $("s_fake").checked; CFG.loginHint = $("s_hint").value.trim(); saveCfg(); $("settings").style.display = "none"; setStat(CFG.clientId && !okId ? "⚠ Client IDの形がおかしいです（「数字-英数字.apps.googleusercontent.com」の1行）。Google Cloudからコピーし直してください" : "設定を保存しました"); };
@@ -852,10 +905,17 @@ function bind() {
   $("vzout").onclick = () => CUR && setZoom(Math.max((CUR.zoom || 1) / 1.25, 0.5));
   $("vsave").onclick = () => CUR && toggleSave(CUR.f, $("vsave"));
 }
+/* ノートが索引に入っている端末だけ、「ノート」の範囲タブと同期ボタンを出す（友達の端末には出さない） */
+function updNoteUi(has) {
+  const sel = $("src"), op = [...sel.options].find(o => o.value === SRC_NOTE);
+  if (has && !op) { const o = document.createElement("option"); o.value = SRC_NOTE; o.textContent = "ノート"; sel.appendChild(o); }
+  if (!has && op) op.remove();
+  const sec = $("dnotesec"); if (sec) sec.style.display = has ? "" : "none"; renderSeg();
+}
 function afterLoad() {
   const c = {}; IX.files.forEach(f => { if (!f.dead) c[f.grp] = (c[f.grp] || 0) + 1; });
-  $("info").textContent = "院内 " + (c[SRC_HOSP] || 0) + " ／ 雑誌 " + (c[GRP_RN] || 0) + " ／ 参考書 " + (c[SRC_BOOK] || 0) + " ファイル・" + IX.N + "箇所";
-  fillT1(); setStat(""); syncFolders(false); loadVocab();
+  $("info").textContent = "院内 " + (c[SRC_HOSP] || 0) + " ／ 雑誌 " + (c[GRP_RN] || 0) + " ／ 参考書 " + (c[SRC_BOOK] || 0) + (c[SRC_NOTE] ? " ／ ノート " + c[SRC_NOTE] : "") + " ファイル・" + IX.N + "箇所";
+  updNoteUi(!!c[SRC_NOTE]); fillT1(); setStat(""); syncFolders(false); loadVocab();
 }
 async function boot() {
   bind(); await loadSaved(); if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
@@ -873,7 +933,7 @@ window.addEventListener("load", boot);
 /* スワイプでメニュー: 画面の左端から右へ引くと開き、開いているメニューを左へ引くと閉じる */
 (function () {
   let sx = 0, sy = 0, mode = "", done = false;
-  const overlayOpen = () => ["viewer", "shelf", "fed", "settings"].some(i => { const e = document.getElementById(i); return e && e.style.display && e.style.display !== "none"; });
+  const overlayOpen = () => ["viewer", "nview", "shelf", "fed", "settings"].some(i => { const e = document.getElementById(i); return e && e.style.display && e.style.display !== "none"; });
   document.addEventListener("touchstart", e => {
     if (e.touches.length !== 1) { mode = ""; return; } const t = e.touches[0]; sx = t.clientX; sy = t.clientY; done = false;
     const dr = document.getElementById("drawer").classList.contains("open");
