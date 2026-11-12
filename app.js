@@ -766,7 +766,7 @@ function renderCands() {
   const lb = document.createElement("span"); lb.className = "vcl"; lb.textContent = "候補"; box.appendChild(lb);
   L.forEach((k, i) => { const b = document.createElement("button"); b.className = "vc"; b.dataset.p = k.page; b.textContent = (i === 0 ? "★" : "") + "p." + k.page; b.onclick = () => goPage(k.page); box.appendChild(b); });
 }
-async function buildPages(n) {
+async function buildPages(n, after) {
   renderCands();
   const box = $("vbody"), wrap = $("vpages"), doc = CUR.doc; wrap.innerHTML = "";
   const p1 = await doc.getPage(1), v1 = p1.getViewport({ scale: 1 });
@@ -778,13 +778,13 @@ async function buildPages(n) {
   if (CUR.io) CUR.io.disconnect();
   CUR.io = new IntersectionObserver(es => es.forEach(e => e.isIntersecting ? renderPg(e.target) : releasePg(e.target)), { root: box, rootMargin: "1400px 0px" });
   CUR.pgs.forEach(d => CUR.io.observe(d));
-  goPage(n);
+  if (after) after(); else goPage(n);
 }
 async function renderPg(d) {
   if (d._r || !CUR) return; d._r = 1; const tok = d._tok = (d._tok || 0) + 1, cur = CUR;
   try {
     const page = await cur.doc.getPage(+d.dataset.n); if (CUR !== cur || d._tok !== tok) return;
-    const sc = cur.cssW / page.getViewport({ scale: 1 }).width, dpr = Math.min(window.devicePixelRatio || 1, 2), vp = page.getViewport({ scale: sc * dpr });
+    const sc = cur.cssW / page.getViewport({ scale: 1 }).width, dpr0 = Math.min(window.devicePixelRatio || 1, 2), v0 = page.getViewport({ scale: sc * dpr0 }), kk = Math.min(1, Math.sqrt(1.2e7 / (v0.width * v0.height))), dpr = dpr0 * kk, vp = page.getViewport({ scale: sc * dpr });   /* 大きく拡大しても、画面が真っ白にならないよう、絵の大きさに上限(約1200万画素)を設ける */
     const cv = document.createElement("canvas"); cv.width = Math.floor(vp.width); cv.height = Math.floor(vp.height);
     await page.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise; if (CUR !== cur || d._tok !== tok) return;
     d.style.height = Math.round(vp.height / dpr) + "px"; d.replaceChildren(cv);
@@ -838,6 +838,26 @@ function onVScroll() {
   if (CUR.align) CUR.align = 0;   // 利用者が動かしたら、自動の位置合わせはやめる
   if (scrollT) return; scrollT = requestAnimationFrame(() => { scrollT = 0; if (CUR && CUR.pgs) { CUR.n = curPageFromScroll(); showPos(); } });
 }
+/* ピンチで自由に拡大・縮小: 指の間の点を中心に、動かしている間は見た目だけ拡大縮小し、離したら、その倍率で描き直す（0.5〜5倍） */
+function pinchZoom(z, cx, cy) {
+  if (!CUR || !CUR.pgs) return; const box = $("vbody"), wrap = $("vpages"); z = Math.min(Math.max(z, 0.5), 5);
+  const wr = wrap.getBoundingClientRect(), P = CUR.pgs; let pi = 0; for (let i = 0; i < P.length; i++) { if (P[i].getBoundingClientRect().top <= cy) pi = i; else break; }
+  const pr = P[pi].getBoundingClientRect(), fy = (cy - pr.top) / Math.max(1, pr.height), fx = (cx - wr.left) / Math.max(1, wr.width);
+  CUR.align = 0; CUR.zoom = z; CUR.n = pi + 1;
+  buildPages(pi + 1, () => {
+    box.scrollTop = 0; box.scrollLeft = 0; const q = CUR.pgs[pi].getBoundingClientRect(), w2 = $("vpages").getBoundingClientRect(); CUR.setting = 1;
+    box.scrollTop = Math.max(0, q.top + fy * q.height - cy); box.scrollLeft = Math.max(0, w2.left + fx * w2.width - cx); showPos();
+  });
+}
+(function () {
+  const box = document.getElementById("vbody"); let st = null;
+  const dist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  box.addEventListener("touchstart", e => { if (!CUR || !CUR.pgs || e.touches.length !== 2) return; const wrap = document.getElementById("vpages"), br = wrap.getBoundingClientRect(), cx = (e.touches[0].clientX + e.touches[1].clientX) / 2, cy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+    st = { d0: dist(e.touches), s: 1, cx, cy }; wrap.style.transformOrigin = (cx - br.left) + "px " + (cy - br.top) + "px"; }, { passive: true });
+  box.addEventListener("touchmove", e => { if (!st || e.touches.length !== 2) return; e.preventDefault(); const z0 = CUR.zoom || 1; st.s = Math.min(Math.max(dist(e.touches) / st.d0, 0.5 / z0), 5 / z0); document.getElementById("vpages").style.transform = "scale(" + st.s + ")"; }, { passive: false });
+  const end = e => { if (!st || e.touches.length >= 2) return; const o = st; st = null; const wrap = document.getElementById("vpages"); wrap.style.transform = ""; wrap.style.transformOrigin = ""; if (Math.abs(o.s - 1) < 0.03) return; pinchZoom((CUR.zoom || 1) * o.s, o.cx, o.cy); };
+  box.addEventListener("touchend", end, { passive: true }); box.addEventListener("touchcancel", end, { passive: true });
+})();
 function setZoom(z) { if (!CUR) return; const n = CUR.n; CUR.zoom = z; buildPages(n); }
 
 /* ---------- ノート（UpNote）: 本文をアプリ内で表示して検索語に色を付ける。「UpNoteで開く」で元のノートへ ---------- */

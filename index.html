@@ -159,7 +159,7 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}body{touch-action:manip
 #fbar{margin:4px 0 2px}#ftoggle{padding:6px 14px;font-size:13px;border-radius:10px}#ftoggle.on{color:var(--ac);border-color:var(--ac)}
 #filters{display:none !important}#filters.open{display:flex !important}
 @media (max-width:600px){#filters.open{display:grid !important}}
-#vbody{background:var(--vbg)}
+#vbody{background:var(--vbg);touch-action:pan-x pan-y}
 #seg{scrollbar-width:none}#seg::-webkit-scrollbar{display:none}
 /* 状態バー部分は、メニューの暗い幕が重なっても、いつも背景色のままにする */
 body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area-inset-top);background:var(--bg);z-index:1000;pointer-events:none}
